@@ -3,17 +3,11 @@ import { RegisterDto } from './dto/register.dto';
 
 @Injectable()
 export class AuthService {
-  private users: { username: string; mobile_no: string; password: string }[] =
-    [];
+  private users: { username: string; mobile_no: string }[] = [];
 
   private otpStore = new Map<
     string,
     { otp: string; username: string; expiresAt: number }
-  >();
-
-  private verifiedUsers = new Map<
-    string,
-    { username: string; verified: number }
   >();
   //Map<string, string> ---> <key, value> pair, key is mobile_no and value is Object(otp, username, expiresAt)
 
@@ -22,10 +16,10 @@ export class AuthService {
   }
 
   generateOtp(): string {
-    return Math.floor(Math.random() * 900000) //generate randome number between 100000 and 999999
-      .toString()
-      .padStart(6, '0'); //Ensures total length is 6 digits
-    // return '123456'; //static otp
+    // return Math.floor(Math.random() * 900000) //generate randome number between 100000 and 999999
+    //   .toString()
+    //   .padStart(6, '0'); //Ensures total length is 6 digits
+    return '123456'; //static otp
   }
 
   register(data: RegisterDto) {
@@ -88,60 +82,12 @@ export class AuthService {
       throw new BadRequestException('Invalid OTP');
     }
 
-    this.verifiedUsers.set(mobile_no, {
-      username: storedData.username,
-      verified: Date.now(),
-    });
+    this.users.push({ username: storedData.username, mobile_no: mobile_no });
+
     this.otpStore.delete(mobile_no);
 
     return {
       message: 'Registration successful',
-    };
-  }
-
-  createPassword(mobile_no: string, password: string) {
-    const existingUser = this.users.find(
-      (user) => user.mobile_no === mobile_no,
-    );
-
-    if (existingUser) {
-      throw new BadRequestException('User already registered');
-    }
-
-    const verifiedUser = this.verifiedUsers.get(mobile_no);
-
-    if (!verifiedUser) {
-      throw new BadRequestException(
-        'Mobile number not verified. Please verify OTP first.',
-      );
-    }
-
-    this.users.push({
-      username: verifiedUser.username,
-      mobile_no,
-      password,
-    });
-
-    this.verifiedUsers.delete(mobile_no);
-
-    return {
-      message: 'Registration completed successfully',
-    };
-  }
-
-  login(mobile_no: string, password: string) {
-    const user = this.users.find((user) => user.mobile_no === mobile_no);
-
-    if (!user || user.password !== password) {
-      throw new BadRequestException('Invalid mobile number or password');
-    }
-
-    return {
-      message: 'Login successful',
-      user: {
-        username: user.username,
-        mobile_no: user.mobile_no,
-      },
     };
   }
 }
