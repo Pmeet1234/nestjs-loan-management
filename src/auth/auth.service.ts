@@ -3,8 +3,19 @@ import { RegisterDto } from './dto/register.dto';
 
 @Injectable()
 export class AuthService {
-  private users: { username: string; mobile_no: string; password: string }[] =
-    [];
+  private users: {
+    username: string;
+    mobile_no: string;
+    password: string;
+    company?: {
+      Company_name: string;
+      salary: number;
+    };
+    kyc?: {
+      adharcard_no: string;
+      pancard_no: string;
+    };
+  }[] = [];
 
   private otpStore = new Map<
     string,
@@ -22,10 +33,10 @@ export class AuthService {
   }
 
   generateOtp(): string {
-    return Math.floor(Math.random() * 900000) //generate randome number between 100000 and 999999
-      .toString()
-      .padStart(6, '0'); //Ensures total length is 6 digits
-    // return '123456'; //static otp
+    // return Math.floor(Math.random() * 900000) //generate randome number between 100000 and 999999
+    //   .toString()
+    //   .padStart(6, '0'); //Ensures total length is 6 digits
+    return '123456'; //static otp
   }
 
   register(data: RegisterDto) {
@@ -142,6 +153,46 @@ export class AuthService {
         username: user.username,
         mobile_no: user.mobile_no,
       },
+    };
+  }
+
+  addCompanyDetails(mobile_no: string, company_name: string, salary: number) {
+    const user = this.users.find((user) => user.mobile_no === mobile_no);
+
+    if (!user) {
+      throw new BadRequestException('User not found');
+    }
+
+    user.company = {
+      Company_name: company_name,
+      salary: salary,
+    };
+
+    return {
+      message: 'Company details added successfully',
+      company: user.company,
+    };
+  }
+
+  addKycDetails(mobile_no: string, adharcard_no: string, pancard_no: string) {
+    const user = this.users.find((user) => user.mobile_no === mobile_no);
+
+    if (!user) {
+      throw new BadRequestException('User not found');
+    }
+
+    if (user.kyc) {
+      throw new BadRequestException('KYC details already added');
+    }
+
+    user.kyc = {
+      adharcard_no: adharcard_no,
+      pancard_no: pancard_no,
+    };
+
+    return {
+      message: 'KYC details added successfully',
+      kyc: user.kyc,
     };
   }
 }
