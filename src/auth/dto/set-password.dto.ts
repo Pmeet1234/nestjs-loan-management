@@ -1,6 +1,9 @@
 import { IsNotEmpty, IsString, Matches } from 'class-validator';
 
 export class setPasswordDto {
+  // password(mobile_no: string, password: string) {
+  //   throw new Error('Method not implemented.');
+  // }
   @IsString()
   @IsNotEmpty()
   @Matches(/^[0-9]{10}$/, {
