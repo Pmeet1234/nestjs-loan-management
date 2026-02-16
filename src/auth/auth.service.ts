@@ -7,14 +7,20 @@ export class AuthService {
     username: string;
     mobile_no: string;
     password: string;
-    company?: {
-      Company_name: string;
-      salary: number;
+    bank?: {
+      account_number: string;
+      ifsc_code: string;
+      bank_name: string;
     };
     kyc?: {
       adharcard_no: string;
       pancard_no: string;
     };
+    company?: {
+      Company_name: string;
+      salary: number;
+    };
+    isLoggedIn?: boolean;
   }[] = [];
 
   private otpStore = new Map<
@@ -62,7 +68,7 @@ export class AuthService {
 
     const otp = this.generateOtp(); //generateOtp() method is called to generate a 6-digit random OTP and store it in the otpStore map with the mobile number as the key. This allows us to later verify the OTP when the user attempts to verify it.
 
-    const expiresAt = Date.now() + 1 * 60 * 1000;
+    const expiresAt = Date.now() + 5 * 60 * 1000;
 
     this.otpStore.set(mobile_no, {
       otp: otp,
@@ -162,8 +168,14 @@ export class AuthService {
       throw new BadRequestException('Invalid mobile number or password');
     }
 
+    if (user.isLoggedIn) {
+      throw new BadRequestException('User already logged in');
+    }
+    user.isLoggedIn = true;
+
     return {
       message: 'Login successful',
+
       user: {
         username: user.username,
         mobile_no: user.mobile_no,

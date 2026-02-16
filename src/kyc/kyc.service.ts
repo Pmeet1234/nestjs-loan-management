@@ -12,6 +12,11 @@ export class KycService {
     if (!user) {
       throw new BadRequestException('User not found');
     }
+    if (!user.bank) {
+      throw new BadRequestException(
+        'Please add bank details before submitting KYC',
+      );
+    }
 
     if (user.kyc) {
       throw new BadRequestException('KYC already submitted');
