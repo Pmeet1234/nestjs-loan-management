@@ -1,7 +1,7 @@
 import { Controller, Post, Body } from '@nestjs/common';
 import { CompanyService } from './company.service';
 import { AddCompanyDto } from '../auth/dto/company.dto';
-import { AddKycDto } from '../auth/dto/kyc.dto';
+// import { AddKycDto } from '../auth/dto/kyc.dto';
 
 @Controller('company')
 export class CompanyController {
@@ -16,12 +16,12 @@ export class CompanyController {
     );
   }
 
-  @Post('add-kyc')
-  addKyc(@Body() dto: AddKycDto) {
-    return this.companyService.addKycDetails(
-      dto.mobile_no,
-      dto.adharcard_no,
-      dto.pancard_no,
-    );
-  }
+  //   @Post('add-kyc')
+  //   addKyc(@Body() dto: AddKycDto) {
+  //     return this.companyService.addKycDetails(
+  //       dto.mobile_no,
+  //       dto.adharcard_no,
+  //       dto.pancard_no,
+  //     );
+  //   }
 }

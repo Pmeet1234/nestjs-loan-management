@@ -2,27 +2,8 @@ import { Injectable, BadRequestException } from '@nestjs/common';
 import { AuthService } from '../auth/auth.service';
 
 @Injectable()
-export class CompanyService {
+export class KycService {
   constructor(private readonly authService: AuthService) {}
-
-  addCompanyDetails(mobile_no: string, company_name: string, salary: number) {
-    const users = this.authService.getAllUsers();
-    const user = users.find((u) => u.mobile_no === mobile_no);
-
-    if (!user) {
-      throw new BadRequestException('User not found');
-    }
-
-    user.company = {
-      Company_name: company_name,
-      salary,
-    };
-
-    return {
-      message: 'Company details added successfully',
-      company: user.company,
-    };
-  }
 
   addKycDetails(mobile_no: string, adharcard_no: string, pancard_no: string) {
     const users = this.authService.getAllUsers();

@@ -147,11 +147,11 @@ export class AuthService {
 
     return {
       message: ' Password Create successfully',
-      user: {
-        username: verifiedUser.username,
-        mobile_no,
-        password: create_password,
-      },
+      // user: {
+      //   username: verifiedUser.username,
+      //   mobile_no,
+      //   password: create_password,
+      // },
     };
   }
 
@@ -170,44 +170,4 @@ export class AuthService {
       },
     };
   }
-
-  // addCompanyDetails(mobile_no: string, company_name: string, salary: number) {
-  //   const user = this.users.find((user) => user.mobile_no === mobile_no);
-
-  //   if (!user) {
-  //     throw new BadRequestException('User not found');
-  //   }
-
-  //   user.company = {
-  //     Company_name: company_name,
-  //     salary: salary,
-  //   };
-
-  //   return {
-  //     message: 'Company details added successfully',
-  //     company: user.company,
-  //   };
-  // }
-
-  // addKycDetails(mobile_no: string, adharcard_no: string, pancard_no: string) {
-  //   const user = this.users.find((user) => user.mobile_no === mobile_no);
-
-  //   if (!user) {
-  //     throw new BadRequestException('User not found');
-  //   }
-
-  //   if (user.kyc) {
-  //     throw new BadRequestException('KYC details already added');
-  //   }
-
-  //   user.kyc = {
-  //     adharcard_no: adharcard_no,
-  //     pancard_no: pancard_no,
-  //   };
-
-  //   return {
-  //     message: 'KYC details added successfully',
-  //     kyc: user.kyc,
-  //   };
-  // }
 }
