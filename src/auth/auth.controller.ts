@@ -4,8 +4,6 @@ import { RegisterDto } from './dto/register.dto';
 import { verifyOtpDto } from './dto/verify-otp.dto';
 import { setPasswordDto } from './dto/set-password.dto';
 import { LoginDto } from './dto/login.dto';
-import { AddCompanyDto } from './dto/company.dto';
-import { AddKycDto } from './dto/kyc.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -27,27 +25,14 @@ export class AuthController {
   }
   @Post('create-password')
   createPassword(@Body() dto: setPasswordDto) {
-    return this.authService.createPassword(dto.mobile_no, dto.password);
+    return this.authService.createPassword(
+      dto.mobile_no,
+      dto.create_password,
+      dto.confirm_password,
+    );
   }
   @Post('login')
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto.mobile_no, dto.password);
-  }
-  @Post('add-company')
-  addCompanyDetails(@Body() dto: AddCompanyDto) {
-    return this.authService.addCompanyDetails(
-      dto.mobile_no,
-      dto.company_name,
-      dto.salary,
-    );
-  }
-
-  @Post('add-kyc')
-  addKycDetails(@Body() dto: AddKycDto) {
-    return this.authService.addKycDetails(
-      dto.mobile_no,
-      dto.adharcard_no,
-      dto.pancard_no,
-    );
   }
 }
