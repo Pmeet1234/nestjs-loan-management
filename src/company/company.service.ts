@@ -15,7 +15,7 @@ export class CompanyService {
 
     if (user.profileStep !== 'COMPANY') {
       throw new BadRequestException(
-        'You already completed This step.Move to next step ',
+        'You already completed This step. Move to next step ',
       );
     }
     user.company = {

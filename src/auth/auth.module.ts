@@ -6,7 +6,7 @@ import { JwtStrategy } from './jwt-strategy';
 @Module({
   imports: [
     JwtModule.register({
-      secret: 'mySecretKey', // change in production
+      secret: 'mySecretKey', 
       signOptions: { expiresIn: '1h' },
     }),
   ],
