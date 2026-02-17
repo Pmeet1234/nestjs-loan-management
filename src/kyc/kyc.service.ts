@@ -27,8 +27,10 @@ export class KycService {
       pancard_no,
     };
 
+    user.profileStep = 'COMPLETED';
     return {
       message: 'KYC added successfully',
+      nextStep: user.profileStep,
       kyc: user.kyc,
     };
   }

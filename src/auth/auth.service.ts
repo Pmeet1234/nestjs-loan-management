@@ -1,8 +1,11 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { RegisterDto } from './dto/register.dto';
+import { JwtService } from '@nestjs/jwt';
 
 @Injectable()
 export class AuthService {
+  constructor(private jwtService: JwtService) {}
+
   private users: {
     username: string;
     mobile_no: string;
@@ -20,7 +23,7 @@ export class AuthService {
       Company_name: string;
       salary: number;
     };
-    isLoggedIn?: boolean;
+    profileStep?: 'COMPANY' | 'BANK' | 'KYC' | 'COMPLETED';
   }[] = [];
 
   private otpStore = new Map<
@@ -68,7 +71,7 @@ export class AuthService {
 
     const otp = this.generateOtp(); //generateOtp() method is called to generate a 6-digit random OTP and store it in the otpStore map with the mobile number as the key. This allows us to later verify the OTP when the user attempts to verify it.
 
-    const expiresAt = Date.now() + 5 * 60 * 1000;
+    const expiresAt = Date.now() + 1 * 60 * 1000;
 
     this.otpStore.set(mobile_no, {
       otp: otp,
@@ -168,14 +171,20 @@ export class AuthService {
       throw new BadRequestException('Invalid mobile number or password');
     }
 
-    if (user.isLoggedIn) {
-      throw new BadRequestException('User already logged in');
+    if (!user.profileStep) {
+      user.profileStep = 'COMPANY';
     }
-    user.isLoggedIn = true;
 
+    const payload = {
+      mobile_no: user.mobile_no,
+      username: user.username,
+    };
+
+    const token = this.jwtService.sign(payload);
     return {
       message: 'Login successful',
-
+      nextStep: user.profileStep,
+      access_token: token,
       user: {
         username: user.username,
         mobile_no: user.mobile_no,

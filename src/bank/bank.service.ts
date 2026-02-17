@@ -22,14 +22,18 @@ export class BankService {
       throw new BadRequestException('Bank details already added');
     }
 
+    if (user.profileStep !== 'BANK') {
+      throw new BadRequestException('Complete Company details first');
+    }
     user.bank = {
       account_number,
       ifsc_code,
       bank_name,
     };
-
+    user.profileStep = 'KYC';
     return {
       message: 'Bank details added successfully',
+      nextStep: user.profileStep,
       bank: user.bank,
     };
   }
