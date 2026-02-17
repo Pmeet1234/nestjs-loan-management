@@ -3,10 +3,12 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtModule } from '@nestjs/jwt';
 import { JwtStrategy } from './jwt-strategy';
+import { PrismaModule } from 'prisma/prisma.module';
 @Module({
   imports: [
+    PrismaModule,
     JwtModule.register({
-      secret: 'mySecretKey', 
+      secret: 'mySecretKey',
       signOptions: { expiresIn: '1h' },
     }),
   ],

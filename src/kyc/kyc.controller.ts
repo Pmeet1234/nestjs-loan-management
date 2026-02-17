@@ -8,14 +8,6 @@ import type { RequestWithUser } from 'src/auth/interfaces/request-with-user.inte
 export class KycController {
   constructor(private readonly kycService: KycService) {}
 
-  // @Post('add-kyc')
-  // addKyc(@Body() dto: AddKycDto) {
-  //   return this.kycService.addKycDetails(
-  //     dto.mobile_no,
-  //     dto.adharcard_no,
-  //     dto.pancard_no,
-  //   );
-  // }
   @UseGuards(JwtAuthGuard)
   @Post('add-kyc')
   addKyc(@Req() req: RequestWithUser, @Body() dto: AddKycDto) {

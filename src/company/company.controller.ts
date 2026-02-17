@@ -8,15 +8,6 @@ import type { RequestWithUser } from 'src/auth/interfaces/request-with-user.inte
 export class CompanyController {
   constructor(private readonly companyService: CompanyService) {}
 
-  // @Post('add-company')
-  // addCompany(@Body() dto: AddCompanyDto) {
-  //   return this.companyService.addCompanyDetails(
-  //     dto.mobile_no,
-  //     dto.company_name,
-  //     dto.salary,
-  //   );
-  // }
-
   @UseGuards(JwtAuthGuard)
   @Post('add-company')
   addCompany(@Request() req: RequestWithUser, @Body() dto: AddCompanyDto) {

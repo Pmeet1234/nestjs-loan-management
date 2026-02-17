@@ -1,37 +1,60 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { AuthService } from '../auth/auth.service';
+import { ProfileStep } from '@prisma/client';
+import { PrismaService } from 'prisma/prisma.service';
 
 @Injectable()
 export class KycService {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private prisma: PrismaService,
+  ) {}
 
-  addKycDetails(mobile_no: string, adharcard_no: string, pancard_no: string) {
-    const users = this.authService.getAllUsers();
-    const user = users.find((u) => u.mobile_no === mobile_no);
+  async addKycDetails(
+    mobile_no: string,
+    adharcard_no: string,
+    pancard_no: string,
+  ) {
+    // const users = this.authService.getAllUsers();
+    // const user = users.find((u) => u.mobile_no === mobile_no);
+    const user = await this.prisma.user.findUnique({
+      where: { mobile_no },
+      include: { kyc: true },
+    });
 
     if (!user) {
       throw new BadRequestException('User not found');
     }
-    if (!user.bank) {
-      throw new BadRequestException(
-        'Please add bank details before submitting KYC',
-      );
+
+    if (user.profileStep === ProfileStep.COMPLETED) {
+      throw new BadRequestException('KYC already added. You cannot change it.');
     }
-
-    if (user.kyc) {
-      throw new BadRequestException('KYC already submitted');
+    if (user.profileStep !== ProfileStep.KYC) {
+      throw new BadRequestException('Complete Company step first');
     }
+    await this.prisma.kyc.create({
+      data: {
+        adharcard_no,
+        pancard_no,
+        userId: user.id,
+      },
+    });
 
-    user.kyc = {
-      adharcard_no,
-      pancard_no,
-    };
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { profileStep: ProfileStep.COMPLETED },
+    });
 
-    user.profileStep = 'COMPLETED';
+    // user.kyc = {
+    //   adharcard_no,
+    //   pancard_no,
+    // };
+
+    // user.profileStep = ProfileStep.COMPLETED;
     return {
       message: 'KYC added successfully',
       nextStep: user.profileStep,
-      kyc: user.kyc,
+      // kyc: user.kyc,
     };
   }
 }

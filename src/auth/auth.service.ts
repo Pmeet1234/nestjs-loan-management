@@ -1,30 +1,32 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { RegisterDto } from './dto/register.dto';
 import { JwtService } from '@nestjs/jwt';
-
+import { ProfileStep } from '@prisma/client';
+import { PrismaService } from 'prisma/prisma.service';
 @Injectable()
 export class AuthService {
-  constructor(private jwtService: JwtService) {}
+  constructor(
+    private prisma: PrismaService,
+    private jwtService: JwtService,
+  ) {}
 
-  private users: {
-    username: string;
-    mobile_no: string;
-    password: string;
-    bank?: {
-      account_number: string;
-      ifsc_code: string;
-      bank_name: string;
-    };
-    kyc?: {
-      adharcard_no: string;
-      pancard_no: string;
-    };
-    company?: {
-      Company_name: string;
-      salary: number;
-    };
-    profileStep?: 'COMPANY' | 'BANK' | 'KYC' | 'COMPLETED';
-  }[] = [];
+  // private users: {
+  //   username: string;
+  //   mobile_no: string;
+  //   password: string;
+
+  //   kyc?: {
+  //     adharcard_no: string;
+  //     pancard_no: string;
+  //   };
+
+  //   company?: {
+  //     Company_name: string;
+  //     salary: number;
+  //   };
+
+  //   profileStep?: ProfileStep;
+  // }[] = [];
 
   private otpStore = new Map<
     string,
@@ -37,9 +39,9 @@ export class AuthService {
   >();
   //Map<string, string> ---> <key, value> pair, key is mobile_no and value is Object(otp, username, expiresAt)
 
-  getAllUsers() {
-    return this.users;
-  }
+  // getAllUsers() {
+  //   return this.users;
+  // }
 
   generateOtp(): string {
     // return Math.floor(Math.random() * 900000) //generate randome number between 100000 and 999999
@@ -48,26 +50,38 @@ export class AuthService {
     return '123456'; //static otp
   }
 
-  register(data: RegisterDto) {
+  async register(data: RegisterDto) {
     const { username, mobile_no } = data;
-    const existingUser = this.users.find(
-      (user) => user.mobile_no === mobile_no, //match mobile_no with existing user mobile_no
-    );
+    // const existingUser = this.users.find(
+    //   (user) => user.mobile_no === mobile_no, //match mobile_no with existing user mobile_no
+    // );
+
+    const existingUser = await this.prisma.user.findUnique({
+      where: { mobile_no },
+    });
+
     if (existingUser) {
       //if mobile_no already exist in users array then throw error
       throw new BadRequestException('Mobile number already registered');
     }
 
     const existingOtp = this.otpStore.get(mobile_no); //check if otp already exist for the mobile_no in otpStore map
-    if (existingOtp) {
-      if (Date.now() < existingOtp.expiresAt) {
-        return {
-          message: 'OTP resend Suceessfully',
-          otp: existingOtp.otp,
-        };
-      }
-      this.otpStore.delete(mobile_no);
+
+    if (existingOtp && Date.now() < existingOtp.expiresAt) {
+      return {
+        message: 'OTP resend successfully',
+        otp: existingOtp.otp,
+      };
     }
+    // if (existingOtp) {
+    //   if (Date.now() < existingOtp.expiresAt) {
+    //     return {
+    //       message: 'OTP resend Suceessfully',
+    //       otp: existingOtp.otp,
+    //     };
+    //   }
+    //   this.otpStore.delete(mobile_no);
+    // }
 
     const otp = this.generateOtp(); //generateOtp() method is called to generate a 6-digit random OTP and store it in the otpStore map with the mobile number as the key. This allows us to later verify the OTP when the user attempts to verify it.
 
@@ -85,10 +99,14 @@ export class AuthService {
     };
   }
 
-  verifyOtp(mobile_no: string, otp: string) {
-    const existingUser = this.users.find(
-      (user) => user.mobile_no === mobile_no,
-    );
+  async verifyOtp(mobile_no: string, otp: string) {
+    // const existingUser = this.users.find(
+    //   (user) => user.mobile_no === mobile_no,
+    // );
+    const existingUser = await this.prisma.user.findUnique({
+      where: { mobile_no },
+    });
+
     if (existingUser) {
       throw new BadRequestException('Mobile number already registered');
     }
@@ -115,18 +133,21 @@ export class AuthService {
     this.otpStore.delete(mobile_no);
 
     return {
-      message: 'Registration successful',
+      message: 'OTP verified successfully',
     };
   }
 
-  createPassword(
+  async createPassword(
     mobile_no: string,
     create_password: string,
     confirm_password: string,
   ) {
-    const existingUser = this.users.find(
-      (user) => user.mobile_no === mobile_no,
-    );
+    // const existingUser = this.users.find(
+    //   (user) => user.mobile_no === mobile_no,
+    // );
+    const existingUser = await this.prisma.user.findUnique({
+      where: { mobile_no },
+    });
 
     if (existingUser) {
       throw new BadRequestException('User already registered');
@@ -146,10 +167,19 @@ export class AuthService {
       );
     }
 
-    this.users.push({
-      username: verifiedUser.username,
-      mobile_no,
-      password: create_password,
+    // this.users.push({
+    //   username: verifiedUser.username,
+    //   mobile_no,
+    //   password: create_password,
+    // });
+
+    await this.prisma.user.create({
+      data: {
+        username: verifiedUser.username,
+        mobile_no,
+        password: create_password,
+        profileStep: ProfileStep.COMPANY,
+      },
     });
 
     this.verifiedUsers.delete(mobile_no);
@@ -164,15 +194,18 @@ export class AuthService {
     };
   }
 
-  login(mobile_no: string, password: string) {
-    const user = this.users.find((user) => user.mobile_no === mobile_no);
+  async login(mobile_no: string, password: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { mobile_no },
+    });
+    // const user = this.users.find((user) => user.mobile_no === mobile_no);
 
     if (!user || user.password !== password) {
       throw new BadRequestException('Invalid mobile number or password');
     }
 
     if (!user.profileStep) {
-      user.profileStep = 'COMPANY';
+      user.profileStep = ProfileStep.COMPANY;
     }
 
     const payload = {
@@ -180,7 +213,9 @@ export class AuthService {
       username: user.username,
     };
 
-    const token = this.jwtService.sign(payload);
+    const token = this.jwtService.sign(payload, {
+      expiresIn: '10m',
+    });
     return {
       message: 'Login successful',
       nextStep: user.profileStep,

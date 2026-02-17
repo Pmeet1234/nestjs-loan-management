@@ -1,10 +1,6 @@
-import { IsNotEmpty, IsString, Matches } from 'class-validator';
+import { Matches } from 'class-validator';
 
 export class AddKycDto {
-  // @IsString()
-  // @IsNotEmpty()
-  // mobile_no: string = '';
-
   @Matches(/^[0-9]{12}$/, {
     message: 'Aadhaar must be 12 digits',
   })
