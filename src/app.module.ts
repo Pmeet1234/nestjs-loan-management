@@ -7,9 +7,10 @@ import { KycService } from './kyc/kyc.service';
 import { KycController } from './kyc/kyc.controller';
 import { KycModule } from './kyc/kyc.module';
 import { PrismaModule } from '../prisma/prisma.module';
+import { UserModule } from './user/user.module';
 
 @Module({
-  imports: [AuthModule, CompanyModule, KycModule, PrismaModule],
+  imports: [AuthModule, CompanyModule, KycModule, PrismaModule, UserModule],
   controllers: [AppController, KycController],
   providers: [AppService, KycService],
 })

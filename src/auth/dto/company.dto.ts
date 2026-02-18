@@ -1,10 +1,6 @@
 import { IsNotEmpty, IsString, IsNumber, Min } from 'class-validator';
 
 export class AddCompanyDto {
-  // @IsString()
-  // @IsNotEmpty()
-  // mobile_no: string = '';
-
   @IsString()
   @IsNotEmpty()
   company_name: string = '';

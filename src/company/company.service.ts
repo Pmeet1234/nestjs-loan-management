@@ -15,8 +15,6 @@ export class CompanyService {
     company_name: string,
     salary: number,
   ) {
-    // const users = this.authService.getAllUsers();
-    // const user = users.find((u) => u.mobile_no === mobile_no);
     const user = await this.prisma.user.findUnique({
       where: { mobile_no },
       include: { company: true },
@@ -43,18 +41,11 @@ export class CompanyService {
       where: { id: user.id },
       data: { profileStep: ProfileStep.KYC },
     });
-    // user.company = {
-    //   Company_name: company_name,
-    //   salary,
-    // };
-
-    // user.profileStep = ProfileStep.KYC;
 
     return {
       message: 'Company details added successfully',
-      //   nextStep: user.profileStep,
-      //   company: user.company,
-      // };
+      company: user.company,
+
       nextStep: ProfileStep.KYC,
     };
   }

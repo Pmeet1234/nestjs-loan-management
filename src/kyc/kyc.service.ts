@@ -15,8 +15,6 @@ export class KycService {
     adharcard_no: string,
     pancard_no: string,
   ) {
-    // const users = this.authService.getAllUsers();
-    // const user = users.find((u) => u.mobile_no === mobile_no);
     const user = await this.prisma.user.findUnique({
       where: { mobile_no },
       include: { kyc: true },
@@ -45,16 +43,9 @@ export class KycService {
       data: { profileStep: ProfileStep.COMPLETED },
     });
 
-    // user.kyc = {
-    //   adharcard_no,
-    //   pancard_no,
-    // };
-
-    // user.profileStep = ProfileStep.COMPLETED;
     return {
       message: 'KYC added successfully',
       nextStep: user.profileStep,
-      // kyc: user.kyc,
     };
   }
 }

@@ -17,7 +17,11 @@ model User {
   id          Int         @id @default(autoincrement())
   username    String
   mobile_no   String      @unique
-  password    String
+  password    String?
+  otp         String?
+  otpExpiry   DateTime?
+  isVerified  Boolean     @default(false)
+
   profileStep ProfileStep @default(COMPANY)
 
   company     Company?
@@ -32,7 +36,7 @@ model Company {
   salary       Int
 
   userId       Int    @unique
-  user         User   @relation(fields: [userId], references: [id])
+  user         User   @relation(fields: [userId], references: [id],onDelete: Cascade)
 }
 
 model Kyc {
@@ -41,5 +45,7 @@ model Kyc {
   pancard_no   String @unique
 
   userId       Int    @unique
-  user         User   @relation(fields: [userId], references: [id])
+  user         User   @relation(fields: [userId], references: [id],onDelete: Cascade)
 }
+
+

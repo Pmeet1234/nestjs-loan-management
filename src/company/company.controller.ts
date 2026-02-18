@@ -10,13 +10,13 @@ export class CompanyController {
 
   @UseGuards(JwtAuthGuard)
   @Post('add-company')
-  addCompany(@Request() req: RequestWithUser, @Body() dto: AddCompanyDto) {
+  addCompany(@Request() req: RequestWithUser, @Body() body: AddCompanyDto) {
     const mobile_no = req.user.mobile_no;
 
     return this.companyService.addCompanyDetails(
       mobile_no,
-      dto.company_name,
-      dto.salary,
+      body.company_name,
+      body.salary,
     );
   }
 }

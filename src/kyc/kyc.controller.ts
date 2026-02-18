@@ -10,13 +10,13 @@ export class KycController {
 
   @UseGuards(JwtAuthGuard)
   @Post('add-kyc')
-  addKyc(@Req() req: RequestWithUser, @Body() dto: AddKycDto) {
+  addKyc(@Req() req: RequestWithUser, @Body() body: AddKycDto) {
     const mobile_no = req.user.mobile_no;
 
     return this.kycService.addKycDetails(
       mobile_no,
-      dto.adharcard_no,
-      dto.pancard_no,
+      body.adharcard_no,
+      body.pancard_no,
     );
   }
 }
