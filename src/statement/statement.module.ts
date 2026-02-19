@@ -1,11 +1,13 @@
 import { Module } from '@nestjs/common';
-import { HttpModule } from '@nestjs/axios';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { HttpModule } from '@nestjs/axios';
+
 import { StatementService } from './statement.service';
 import { StatementController } from './statement.controller';
-import { Statement } from './entities/statmnt.entity';
+import { BankStatement } from './entities/bank-statement.entity';
+
 @Module({
-  imports: [HttpModule, TypeOrmModule.forFeature([Statement])],
+  imports: [TypeOrmModule.forFeature([BankStatement]), HttpModule],
   controllers: [StatementController],
   providers: [StatementService],
 })

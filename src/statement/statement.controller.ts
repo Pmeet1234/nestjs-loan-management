@@ -1,38 +1,23 @@
-import {
-  Controller,
-  Post,
-  UploadedFile,
-  UseInterceptors,
-  Body,
-} from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+/* eslint-disable @typescript-eslint/no-unsafe-return */
+import { Controller, Post, Body, Get, Param } from '@nestjs/common';
 import { StatementService } from './statement.service';
-import { diskStorage } from 'multer';
 
-@Controller('getBankStatement')
+@Controller('statement')
 export class StatementController {
   constructor(private statementService: StatementService) {}
 
-  @Post('extract')
-  @UseInterceptors(
-    FileInterceptor('pdfFile', {
-      storage: diskStorage({
-        destination: './uploads',
-        filename: (req, file, cb) => {
-          cb(null, Date.now() + '-' + file.originalname);
-        },
-      }),
-    }),
-  )
-  async extractBankStatmentData(
-    @UploadedFile() file: Express.Multer.File,
-    @Body('bankCode') bankCode: string,
-  ) {
-    return this.statementService.extractBankStatmentData(bankCode, file.path);
+  @Post('submitBankDetails')
+  async funcSubmitBankDetails() {
+    return await this.statementService.uploadStatement();
   }
 
-  @Post('GetBankStatementSummary')
-  async getBankStatmentSummary(@Body('request_id') request_id: string) {
-    return this.statementService.getBankStatmentSummary(request_id);
+  @Post('summary')
+  async summary(@Body('request_id') requestId: string) {
+    return await this.statementService.getSummaryAndSave(requestId);
+  }
+
+  @Get('/getStatement/:requestId')
+  async getOne(@Param('requestId') requestId: string) {
+    return await this.statementService.findOneStatement(requestId);
   }
 }
