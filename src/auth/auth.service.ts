@@ -1,67 +1,67 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
-import { RegisterDto } from './dto/register.dto';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
-import { ProfileStep } from '@prisma/client';
-import { PrismaService } from 'prisma/prisma.service';
+
+import { RegisterDto } from './dto/register.dto';
+import { User } from '../user/entities/user.entity';
+import { ProfileStep } from '../user/enums/profile-step.enum';
 
 @Injectable()
 export class AuthService {
   constructor(
-    private prisma: PrismaService,
+    @InjectRepository(User)
+    private userRepository: Repository<User>,
+
     private jwtService: JwtService,
   ) {}
 
-  generateOtp(): string {
-    // return Math.floor(Math.random() * 900000) //generate randome number between 100000 and 999999
-    //   .toString()
-    //   .padStart(6, '0');
-    return '123456'; // static for testing
+  generateOtp(): number {
+    return 123456;
   }
 
   async register(data: RegisterDto) {
     const { username, mobile_no } = data;
 
-    const existingUser = await this.prisma.user.findUnique({
+    let user = await this.userRepository.findOne({
       where: { mobile_no },
     });
 
-    // If already fully registered
-    if (existingUser && existingUser.password) {
+    if (user && user.password) {
       throw new BadRequestException('Mobile number already registered');
     }
 
     const otp = this.generateOtp();
-    // const otpExpiry = new Date(Date.now() + 1 * 60 * 1000);
+
     const otpExpiry = new Date();
     otpExpiry.setMinutes(otpExpiry.getMinutes() + 1);
 
-    // Create or update OTP
-    await this.prisma.user.upsert({
-      where: { mobile_no },
-      update: {
-        username,
-        otp,
-        otpExpiry,
-        isVerified: false,
-      },
-      create: {
+    if (user) {
+      user.username = username;
+      user.otp = otp;
+      user.otpExpiry = otpExpiry;
+      user.isVerified = false;
+    } else {
+      user = this.userRepository.create({
         username,
         mobile_no,
         otp,
         otpExpiry,
         isVerified: false,
-      },
-    });
+      });
+    }
+
+    await this.userRepository.save(user);
 
     return {
       message: 'OTP sent successfully',
-      otp: otp,
+      otp,
       expiresAt: otpExpiry,
     };
   }
 
   async verifyOtp(mobile_no: string, otp: string) {
-    const user = await this.prisma.user.findUnique({
+    const user = await this.userRepository.findOne({
       where: { mobile_no },
     });
 
@@ -77,18 +77,15 @@ export class AuthService {
       throw new BadRequestException('OTP expired');
     }
 
-    if (user.otp !== otp) {
+    if (user.otp !== parseInt(otp)) {
       throw new BadRequestException('Invalid OTP');
     }
 
-    await this.prisma.user.update({
-      where: { mobile_no },
-      data: {
-        isVerified: true,
-        otp: null,
-        otpExpiry: null,
-      },
-    });
+    user.isVerified = true;
+    user.otp = null;
+    user.otpExpiry = null;
+
+    await this.userRepository.save(user);
 
     return {
       message: 'OTP verified successfully',
@@ -100,7 +97,7 @@ export class AuthService {
     create_password: string,
     confirm_password: string,
   ) {
-    const user = await this.prisma.user.findUnique({
+    const user = await this.userRepository.findOne({
       where: { mobile_no },
     });
 
@@ -120,13 +117,10 @@ export class AuthService {
       );
     }
 
-    await this.prisma.user.update({
-      where: { mobile_no },
-      data: {
-        password: create_password,
-        profileStep: ProfileStep.COMPANY,
-      },
-    });
+    user.password = create_password;
+    user.profileStep = ProfileStep.COMPANY;
+
+    await this.userRepository.save(user);
 
     return {
       message: 'Password created successfully',
@@ -134,7 +128,7 @@ export class AuthService {
   }
 
   async login(mobile_no: string, password: string) {
-    const user = await this.prisma.user.findUnique({
+    const user = await this.userRepository.findOne({
       where: { mobile_no },
     });
 

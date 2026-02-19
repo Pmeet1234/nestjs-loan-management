@@ -1,8 +1,9 @@
 import { Controller, Post, Body, UseGuards, Request } from '@nestjs/common';
+
 import { CompanyService } from './company.service';
 import { AddCompanyDto } from '../auth/dto/company.dto';
-import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
-import type { RequestWithUser } from 'src/auth/interfaces/request-with-user.interface';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import type { RequestWithUser } from '../auth/interfaces/request-with-user.interface';
 
 @Controller('company')
 export class CompanyController {

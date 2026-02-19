@@ -1,13 +1,19 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
-import { AuthService } from '../auth/auth.service';
-import { ProfileStep } from '@prisma/client';
-import { PrismaService } from 'prisma/prisma.service';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+
+import { Company } from './entities/company.entity';
+import { User } from '../user/entities/user.entity';
+import { ProfileStep } from '../user/enums/profile-step.enum';
 
 @Injectable()
 export class CompanyService {
   constructor(
-    private readonly authService: AuthService,
-    private prisma: PrismaService,
+    @InjectRepository(User)
+    private userRepository: Repository<User>,
+
+    @InjectRepository(Company)
+    private companyRepository: Repository<Company>,
   ) {}
 
   async addCompanyDetails(
@@ -15,9 +21,9 @@ export class CompanyService {
     company_name: string,
     salary: number,
   ) {
-    const user = await this.prisma.user.findUnique({
+    const user = await this.userRepository.findOne({
       where: { mobile_no },
-      include: { company: true },
+      relations: ['company'],
     });
 
     if (!user) {
@@ -26,26 +32,24 @@ export class CompanyService {
 
     if (user.profileStep !== ProfileStep.COMPANY) {
       throw new BadRequestException(
-        'You already completed This step. Move to next step ',
+        'You already completed this step. Move to next step.',
       );
     }
 
-    await this.prisma.company.create({
-      data: {
-        company_name,
-        salary,
-        userId: user.id,
-      },
+    const company = this.companyRepository.create({
+      company_name,
+      salary,
+      // user,
     });
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: { profileStep: ProfileStep.KYC },
-    });
+
+    await this.companyRepository.save(company);
+
+    user.profileStep = ProfileStep.KYC;
+    await this.userRepository.save(user);
 
     return {
       message: 'Company details added successfully',
-      company: user.company,
-
+      company,
       nextStep: ProfileStep.KYC,
     };
   }

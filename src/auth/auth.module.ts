@@ -1,12 +1,16 @@
 import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { JwtModule } from '@nestjs/jwt';
+
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
-import { JwtModule } from '@nestjs/jwt';
 import { JwtStrategy } from './jwt-strategy';
-import { PrismaModule } from 'prisma/prisma.module';
+import { User } from '../user/entities/user.entity';
+
 @Module({
   imports: [
-    PrismaModule,
+    TypeOrmModule.forFeature([User]),
+
     JwtModule.register({
       secret: 'mySecretKey',
       signOptions: { expiresIn: '1h' },

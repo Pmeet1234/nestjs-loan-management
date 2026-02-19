@@ -1,32 +1,37 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
-import { PrismaService } from 'prisma/prisma.service';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+
+import { User } from './entities/user.entity';
 import { UserDto } from '../auth/dto/user.dto';
+
 @Injectable()
 export class UserService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    @InjectRepository(User)
+    private userRepository: Repository<User>,
+  ) {}
 
   // Get all users
-  async findAll(): Promise<UserDto[]> {
-    return this.prisma.user.findMany({
-      select: {
-        id: true,
-        username: true,
-        mobile_no: true,
-      },
+  async findAllUser(): Promise<UserDto[]> {
+    const users = await this.userRepository.find({
+      select: ['id', 'username', 'mobile_no'],
     });
+
+    return users;
   }
 
   // Get one user by mobile number
-  async findOne(mobile_no: string): Promise<UserDto> {
-    const user = await this.prisma.user.findUnique({
+  async findOneUser(mobile_no: string): Promise<UserDto> {
+    const user = await this.userRepository.findOne({
       where: { mobile_no },
-      select: {
-        id: true,
-        username: true,
-        mobile_no: true,
-      },
+      select: ['id', 'username', 'mobile_no'],
     });
-    if (!user) throw new BadRequestException('User not found');
+
+    if (!user) {
+      throw new BadRequestException('User not found');
+    }
+
     return user;
   }
 }

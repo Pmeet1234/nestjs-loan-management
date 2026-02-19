@@ -1,13 +1,19 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
-import { AuthService } from '../auth/auth.service';
-import { ProfileStep } from '@prisma/client';
-import { PrismaService } from 'prisma/prisma.service';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+
+import { User } from '../user/entities/user.entity';
+import { Kyc } from './entities/kyc.entity';
+import { ProfileStep } from '../user/enums/profile-step.enum';
 
 @Injectable()
 export class KycService {
   constructor(
-    private readonly authService: AuthService,
-    private prisma: PrismaService,
+    @InjectRepository(User)
+    private userRepository: Repository<User>,
+
+    @InjectRepository(Kyc)
+    private kycRepository: Repository<Kyc>,
   ) {}
 
   async addKycDetails(
@@ -15,9 +21,9 @@ export class KycService {
     adharcard_no: string,
     pancard_no: string,
   ) {
-    const user = await this.prisma.user.findUnique({
+    const user = await this.userRepository.findOne({
       where: { mobile_no },
-      include: { kyc: true },
+      relations: ['kyc'],
     });
 
     if (!user) {
@@ -27,25 +33,25 @@ export class KycService {
     if (user.profileStep === ProfileStep.COMPLETED) {
       throw new BadRequestException('KYC already added. You cannot change it.');
     }
+
     if (user.profileStep !== ProfileStep.KYC) {
       throw new BadRequestException('Complete Company step first');
     }
-    await this.prisma.kyc.create({
-      data: {
-        adharcard_no,
-        pancard_no,
-        userId: user.id,
-      },
+
+    const kyc = this.kycRepository.create({
+      adharcard_no,
+      pancard_no,
+      user,
     });
 
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: { profileStep: ProfileStep.COMPLETED },
-    });
+    await this.kycRepository.save(kyc);
+
+    user.profileStep = ProfileStep.COMPLETED;
+    await this.userRepository.save(user);
 
     return {
       message: 'KYC added successfully',
-      nextStep: user.profileStep,
+      nextStep: ProfileStep.COMPLETED,
     };
   }
 }
