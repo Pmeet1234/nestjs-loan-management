@@ -2,27 +2,26 @@ import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm';
 
 @Entity('bank_statement')
 export class BankStatement {
-
   @PrimaryGeneratedColumn()
-  id: number;
+  id: number = 0;
 
   @Column()
-  requestId: string;
+  requestId: string = '';
 
   @Column({ nullable: true })
-  accountNumber: string;
+  accountNumber!: string;
 
   @Column({ nullable: true })
-  accountHolderName: string;
+  accountHolderName!: string;
 
   @Column({ nullable: true })
-  totalCredit: string;
+  totalCredit!: string;
 
   @Column({ nullable: true })
-  totalDebit: string;
+  totalDebit!: string;
 
   @Column({ nullable: true })
-  closingBalance: string;
+  closingBalance!: string;
 
   @Column({ type: 'jsonb', nullable: true })
   rawResponse: any;

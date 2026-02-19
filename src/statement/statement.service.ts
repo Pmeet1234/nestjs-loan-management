@@ -17,11 +17,13 @@ export class StatementService {
     private statementRepo: Repository<BankStatement>,
   ) {}
 
-  async uploadStatement(): Promise<any> {
+  async uploadStatement(filePath: string, originalname: string): Promise<any> {
     const formData = new FormData();
     formData.append('bankCode', 'ICICI');
-    formData.append('pdfFile', fs.createReadStream('./uploads/sample.pdf'));
-
+    formData.append('pdfFile', fs.createReadStream(filePath), {
+      filename: originalname,
+      contentType: 'application/pdf',
+    });
     const response = await firstValueFrom(
       this.httpService.post(
         'http://localhost:9000/api/v1/statement/extractDataBank',
@@ -34,11 +36,11 @@ export class StatementService {
         },
       ),
     );
-
+    fs.unlinkSync(filePath);
     // Return request_id from third party response
     return {
       message: 'PDF uploaded successfully',
-      filename: 'sample.pdf',
+      filename: originalname,
       request_id: response.data.request_id, // ← return request_id
     };
   }
