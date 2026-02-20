@@ -8,6 +8,8 @@ import { KycModule } from './kyc/kyc.module';
 import { UserModule } from './user/user.module';
 import { ConfigModule } from '@nestjs/config';
 import { StatementModule } from './statement/statement.module';
+import { LoanModule } from './loan/loan.module';
+import { AdminModule } from './admin/admin.module';
 
 @Module({
   imports: [
@@ -30,6 +32,8 @@ import { StatementModule } from './statement/statement.module';
     KycModule,
     UserModule,
     StatementModule,
+    LoanModule,
+    AdminModule,
   ],
   controllers: [AppController],
   providers: [AppService],

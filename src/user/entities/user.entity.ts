@@ -4,15 +4,17 @@ import {
   PrimaryGeneratedColumn,
   CreateDateColumn,
   UpdateDateColumn,
+  OneToMany,
 } from 'typeorm';
 import { ProfileStep } from '../enums/profile-step.enum';
 import { Company } from '../../company/entities/company.entity';
 import { OneToOne } from 'typeorm';
 import { Kyc } from '../../kyc/entities/kyc.entity';
+import { Loan } from 'src/loan/entities/loan.entity';
 
 @Entity()
 export class User {
-  @PrimaryGeneratedColumn()
+  @PrimaryGeneratedColumn({ name: 'userId' })
   id!: number;
 
   @Column({ nullable: true })
@@ -51,4 +53,13 @@ export class User {
 
   @OneToOne(() => Kyc, (kyc) => kyc.user)
   kyc!: Kyc;
+
+  @Column({ default: false })
+  isEmploymentApproved!: boolean;
+
+  @OneToMany(() => Loan, (loan) => loan.user)
+  loans!: Loan[];
+
+  @Column({ default: false })
+  hasAppliedLoan!: boolean;
 }

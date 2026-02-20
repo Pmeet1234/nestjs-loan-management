@@ -23,7 +23,7 @@ export class KycService {
   ) {
     const user = await this.userRepository.findOne({
       where: { mobile_no },
-      // relations: ['kyc'],
+      relations: ['kyc'],
     });
 
     if (!user) {
