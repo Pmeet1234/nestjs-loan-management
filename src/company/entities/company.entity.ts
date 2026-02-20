@@ -2,8 +2,8 @@ import {
   Entity,
   Column,
   PrimaryGeneratedColumn,
-  OneToOne,
   JoinColumn,
+  OneToOne,
 } from 'typeorm';
 import { User } from '../../user/entities/user.entity';
 
@@ -18,9 +18,7 @@ export class Company {
   @Column('decimal')
   salary!: number;
 
-  @OneToOne(() => User, (user) => user.company, {
-    onDelete: 'CASCADE',
-  })
-  @JoinColumn()
+  @OneToOne(() => User, (user) => user.company)
+  @JoinColumn({ name: 'userId' })
   user!: User;
 }

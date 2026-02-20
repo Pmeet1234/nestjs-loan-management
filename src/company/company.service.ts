@@ -23,7 +23,6 @@ export class CompanyService {
   ) {
     const user = await this.userRepository.findOne({
       where: { mobile_no },
-      relations: ['company'],
     });
 
     if (!user) {
@@ -39,7 +38,7 @@ export class CompanyService {
     const company = this.companyRepository.create({
       company_name,
       salary,
-      // user,
+      user,
     });
 
     await this.companyRepository.save(company);
@@ -49,7 +48,8 @@ export class CompanyService {
 
     return {
       message: 'Company details added successfully',
-      company,
+      company_name: company.company_name,
+      salary: company.salary,
       nextStep: ProfileStep.KYC,
     };
   }

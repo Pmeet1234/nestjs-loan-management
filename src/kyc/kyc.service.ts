@@ -23,7 +23,7 @@ export class KycService {
   ) {
     const user = await this.userRepository.findOne({
       where: { mobile_no },
-      relations: ['kyc'],
+      // relations: ['kyc'],
     });
 
     if (!user) {
@@ -46,12 +46,14 @@ export class KycService {
 
     await this.kycRepository.save(kyc);
 
-    user.profileStep = ProfileStep.COMPLETED;
+    user.profileStep = ProfileStep.LOAN;
     await this.userRepository.save(user);
 
     return {
       message: 'KYC added successfully',
-      nextStep: ProfileStep.COMPLETED,
+      adharcard_no: kyc.adharcard_no,
+      pancard_no: kyc.pancard_no,
+      nextStep: ProfileStep.LOAN,
     };
   }
 }

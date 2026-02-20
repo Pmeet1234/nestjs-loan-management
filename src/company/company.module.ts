@@ -7,10 +7,7 @@ import { Company } from './entities/company.entity';
 import { User } from 'src/user/entities/user.entity';
 
 @Module({
-  imports: [
-    AuthModule,
-    TypeOrmModule.forFeature([Company, User]), // ✅ Add both repositories
-  ],
+  imports: [AuthModule, TypeOrmModule.forFeature([Company, User])],
   providers: [CompanyService],
   controllers: [CompanyController],
 })

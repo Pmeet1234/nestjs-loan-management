@@ -45,6 +45,7 @@ export class User {
 
   @UpdateDateColumn()
   updatedAt!: Date;
+
   @OneToOne(() => Company, (company) => company.user)
   company!: Company;
 

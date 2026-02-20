@@ -14,18 +14,16 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 
-@Controller('statement')
+@Controller('Bankstatement')
 export class StatementController {
   constructor(private statementService: StatementService) {}
 
-  // ✅ STEP 1: Upload PDF → returns request_id
   @Post('submitBankDetails')
   @UseInterceptors(
     FileInterceptor('pdfFile', {
       storage: diskStorage({
         destination: './uploads',
         filename: (req, file, cb) => {
-          // Keep original name, add timestamp to avoid collisions
           const uniqueSuffix =
             Date.now() + '-' + Math.round(Math.random() * 1e9);
           cb(null, uniqueSuffix + extname(file.originalname));
@@ -42,22 +40,22 @@ export class StatementController {
       },
     }),
   )
-  async uploadStatement(@UploadedFile() file: Express.Multer.File) {
+  async uploadBankStatement(@UploadedFile() file: Express.Multer.File) {
     if (!file) {
       throw new BadRequestException(
         'No file uploaded. Use field name: pdfFile',
       );
     }
 
-    return this.statementService.uploadStatement(
-      file.path, // ✅ dynamic path on disk
-      file.originalname, // ✅ original filename from Postman
+    return this.statementService.uploadBankStatement(
+      file.path,
+      file.originalname,
     );
   }
 
-  @Post('summary')
-  async summary(@Body('request_id') requestId: string) {
-    return await this.statementService.getSummaryAndSave(requestId);
+  @Post('getBankSummary')
+  async getBankSummary(@Body('request_id') requestId: string) {
+    return await this.statementService.getBankSummary(requestId);
   }
 
   @Get('/getStatement/:requestId')

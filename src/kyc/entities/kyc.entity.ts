@@ -18,9 +18,7 @@ export class Kyc {
   @Column()
   pancard_no!: string;
 
-  @OneToOne(() => User, (user) => user.kyc, {
-    onDelete: 'CASCADE',
-  })
-  @JoinColumn()
+  @OneToOne(() => User, (user) => user.kyc)
+  @JoinColumn({ name: 'userId' })
   user!: User;
 }

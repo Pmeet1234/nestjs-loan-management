@@ -17,7 +17,10 @@ export class StatementService {
     private statementRepo: Repository<BankStatement>,
   ) {}
 
-  async uploadStatement(filePath: string, originalname: string): Promise<any> {
+  async uploadBankStatement(
+    filePath: string,
+    originalname: string,
+  ): Promise<any> {
     const formData = new FormData();
     formData.append('bankCode', 'ICICI');
     formData.append('pdfFile', fs.createReadStream(filePath), {
@@ -41,11 +44,12 @@ export class StatementService {
     return {
       message: 'PDF uploaded successfully',
       filename: originalname,
-      request_id: response.data.request_id, // ← return request_id
+      request_id: response.data.request_id,
     };
   }
 
-  async getSummaryAndSave(requestId: string): Promise<any> {
+  //  STEP 2: Pass request_id → mock server returns real PDF data → save to DB
+  async getBankSummary(requestId: string): Promise<any> {
     const response = await firstValueFrom(
       this.httpService.post(
         'http://localhost:9000/api/v1/statement/getExtractSummary',

@@ -15,7 +15,15 @@ export class UserService {
   // Get all users
   async findAllUser(): Promise<UserDto[]> {
     const users = await this.userRepository.find({
-      select: ['id', 'username', 'mobile_no'],
+      // select: [
+      //   'id',
+      //   'username',
+      //   'password',
+      //   'mobile_no',
+      //   'profileStep',
+      //   'isVerified',
+      // ],
+      relations: ['company', 'kyc'],
     });
 
     return users;
@@ -25,7 +33,7 @@ export class UserService {
   async findOneUser(mobile_no: string): Promise<UserDto> {
     const user = await this.userRepository.findOne({
       where: { mobile_no },
-      select: ['id', 'username', 'mobile_no'],
+      relations: ['company', 'kyc'],
     });
 
     if (!user) {
