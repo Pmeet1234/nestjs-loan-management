@@ -26,22 +26,38 @@ export class AdminService {
     private jwtService: JwtService,
   ) {}
 
-  async signup(username: string, password: string) {
+  async signup(email: string, password: string) {
+    const existingAdmin = await this.adminRepository.findOne({
+      where: { email },
+    });
+
+    if (existingAdmin) {
+      throw new BadRequestException('Email already exists');
+    }
+
     const hash = await bcrypt.hash(password, 10);
 
     const admin = this.adminRepository.create({
-      username,
+      email,
       password: hash,
     });
 
-    await this.adminRepository.save(admin);
+    try {
+      await this.adminRepository.save(admin);
+    } catch (error: any) {
+      if (error.code === '23505') {
+        throw new BadRequestException('Email already exists');
+      }
+
+      throw error;
+    }
 
     return { message: 'Admin registered successfully' };
   }
 
-  async login(username: string, password: string) {
+  async login(email: string, password: string) {
     const admin = await this.adminRepository.findOne({
-      where: { username },
+      where: { email },
     });
 
     if (!admin || !(await bcrypt.compare(password, admin.password)))
@@ -52,7 +68,7 @@ export class AdminService {
       role: 'admin',
     });
 
-    return { access_token: token };
+    return { access_token: token, message: 'Admin Login Successfully' };
   }
 
   async approveEmployment(mobile_no: string) {

@@ -23,19 +23,19 @@ export class KycService {
   ) {
     const user = await this.userRepository.findOne({
       where: { mobile_no },
-      relations: ['kyc'],
+      // relations: ['kyc'],
     });
 
     if (!user) {
       throw new BadRequestException('User not found');
     }
 
-    if (user.profileStep === ProfileStep.COMPLETED) {
-      throw new BadRequestException('KYC already added. You cannot change it.');
-    }
+    // if (user.profileStep === ProfileStep.COMPLETED) {
+    //   throw new BadRequestException('KYC already added. You cannot change it.');
+    // }
 
     if (user.profileStep !== ProfileStep.KYC) {
-      throw new BadRequestException('Complete Company step first');
+      throw new BadRequestException('KYC already added. You cannot change it.');
     }
 
     const kyc = this.kycRepository.create({

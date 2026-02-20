@@ -1,8 +1,9 @@
-import { IsString, Matches, MinLength } from 'class-validator';
+import { IsEmail, IsString, Matches, MinLength } from 'class-validator';
 
 export class AdminSignupDto {
   @IsString()
-  username!: string;
+  @IsEmail({}, { message: 'Invalid email format' })
+  email!: string;
 
   @IsString()
   @MinLength(6)

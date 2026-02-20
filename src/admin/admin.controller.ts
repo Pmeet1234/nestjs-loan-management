@@ -10,12 +10,12 @@ export class AdminController {
 
   @Post('signup')
   signup(@Body() body: AdminSignupDto) {
-    return this.adminService.signup(body.username, body.password);
+    return this.adminService.signup(body.email, body.password);
   }
 
   @Post('login')
   login(@Body() body: AdminLoginDto) {
-    return this.adminService.login(body.username, body.password);
+    return this.adminService.login(body.email, body.password);
   }
   @UseGuards(JwtAuthGuard)
   @Post('approve/:mobile_no')

@@ -6,7 +6,7 @@ export class Admin {
   id!: number;
 
   @Column({ unique: true })
-  username!: string;
+  email!: string;
 
   @Column()
   password!: string;

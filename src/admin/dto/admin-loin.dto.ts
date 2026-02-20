@@ -1,8 +1,9 @@
-import { IsString, Matches } from 'class-validator';
+import { IsEmail, IsString, Matches } from 'class-validator';
 
 export class AdminLoginDto {
   @IsString()
-  username!: string;
+  @IsEmail({}, { message: 'Invalid email format' })
+  email!: string;
 
   @IsString()
   @Matches(
