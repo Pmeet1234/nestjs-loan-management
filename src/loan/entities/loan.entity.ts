@@ -30,6 +30,13 @@ export class Loan {
   @CreateDateColumn()
   createdAt!: Date;
 
+  @Column()
+  emiCount!: number;
+
+  @Column('decimal', { precision: 10, scale: 2 })
+  emiAmount!: number;
+  F;
+
   @ManyToOne(() => User, (user) => user.loans)
   user!: User;
 }

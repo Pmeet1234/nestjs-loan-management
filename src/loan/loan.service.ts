@@ -46,14 +46,27 @@ export class LoanService {
       }
     }
 
+    if (requestedAmount < this.MIN_LOAN)
+      throw new BadRequestException(`Minimum loan is ₹${this.MIN_LOAN}`);
+
+    if (requestedAmount > this.MAX_LOAN)
+      throw new BadRequestException(`Maximum loan is ₹${this.MAX_LOAN}`);
+
     const interest = requestedAmount * this.INTEREST_RATE;
     const total = requestedAmount + interest;
 
+    const emiCount = requestedAmount >= 50000 ? 4 : 3;
+    const emiAmount = total / emiCount;
+    const totalLoansTaken = await this.loanRepository.count({
+      where: { user: { id: user.id } },
+    });
     const loan = this.loanRepository.create({
       requestedAmount,
       approvedAmount: requestedAmount,
       interestAmount: interest,
       totalPayable: total,
+      emiCount,
+      emiAmount,
       user,
     });
 
@@ -64,6 +77,9 @@ export class LoanService {
       approvedAmount: requestedAmount,
       interestAmount: interest,
       totalPayable: total,
+      emiCount,
+      emiAmount,
+      totalLoansTaken,
       nextStep: 'COMPLETED',
     };
   }
