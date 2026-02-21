@@ -15,14 +15,6 @@ export class UserService {
   // Get all users
   async findAllUser(): Promise<UserDto[]> {
     const users = await this.userRepository.find({
-      // select: [
-      //   'id',
-      //   'username',
-      //   'password',
-      //   'mobile_no',
-      //   'profileStep',
-      //   'isVerified',
-      // ],
       relations: ['company', 'kyc'],
     });
 

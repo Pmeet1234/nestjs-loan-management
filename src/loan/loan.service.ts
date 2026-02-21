@@ -4,7 +4,6 @@ import { Repository } from 'typeorm';
 
 import { Loan } from './entities/loan.entity';
 import { User } from '../user/entities/user.entity';
-import { ProfileStep } from '../user/enums/profile-step.enum';
 @Injectable()
 export class LoanService {
   private MIN_LOAN = 10000;
@@ -27,11 +26,10 @@ export class LoanService {
 
     if (!user) throw new BadRequestException('User not found');
 
-    if (user.profileStep !== ProfileStep.LOAN) {
-      throw new BadRequestException('Complete KYC step first');
-    }
-    if (!user.isEmploymentApproved)
-      throw new BadRequestException('Employment not approved by admin');
+    // const loans = await this.loanRepository.find({
+    //   where: { user: { id: user.id } },
+    //   relations: ['user'],
+    // });
 
     if (!user.company)
       throw new BadRequestException('Company details not found');
@@ -71,16 +69,19 @@ export class LoanService {
     });
 
     await this.loanRepository.save(loan);
-    user.profileStep = ProfileStep.COMPLETED;
     return {
       message: 'Loan Approved Successfully',
+      userId: user.id,
+      username: user.username,
+      mobile_no: user.mobile_no,
       approvedAmount: requestedAmount,
       interestAmount: interest,
       totalPayable: total,
       emiCount,
       emiAmount,
+
       totalLoansTaken,
-      nextStep: 'COMPLETED',
+      // loans,
     };
   }
 }

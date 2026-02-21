@@ -24,9 +24,6 @@ export class Loan {
   @Column()
   totalPayable!: number;
 
-  @Column({ default: 'APPROVED' })
-  status!: string;
-
   @CreateDateColumn()
   createdAt!: Date;
 
@@ -35,7 +32,6 @@ export class Loan {
 
   @Column('decimal', { precision: 10, scale: 2 })
   emiAmount!: number;
-  F;
 
   @ManyToOne(() => User, (user) => user.loans)
   user!: User;

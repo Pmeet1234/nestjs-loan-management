@@ -6,7 +6,6 @@ import {
   UpdateDateColumn,
   OneToMany,
 } from 'typeorm';
-import { ProfileStep } from '../enums/profile-step.enum';
 import { Company } from '../../company/entities/company.entity';
 import { OneToOne } from 'typeorm';
 import { Kyc } from '../../kyc/entities/kyc.entity';
@@ -35,13 +34,6 @@ export class User {
   @Column({ default: false })
   isVerified!: boolean;
 
-  @Column({
-    type: 'enum',
-    enum: ProfileStep,
-    default: ProfileStep.COMPANY,
-  })
-  profileStep!: ProfileStep;
-
   @CreateDateColumn()
   createdAt!: Date;
 
@@ -60,6 +52,6 @@ export class User {
   @OneToMany(() => Loan, (loan) => loan.user)
   loans!: Loan[];
 
-  @Column({ default: false })
-  hasAppliedLoan!: boolean;
+  // @Column({ default: false })
+  // hasAppliedLoan!: boolean;
 }

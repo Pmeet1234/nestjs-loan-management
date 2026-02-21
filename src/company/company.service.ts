@@ -4,7 +4,6 @@ import { Repository } from 'typeorm';
 
 import { Company } from './entities/company.entity';
 import { User } from '../user/entities/user.entity';
-import { ProfileStep } from '../user/enums/profile-step.enum';
 
 @Injectable()
 export class CompanyService {
@@ -23,16 +22,11 @@ export class CompanyService {
   ) {
     const user = await this.userRepository.findOne({
       where: { mobile_no },
+      relations: ['company'],
     });
 
     if (!user) {
       throw new BadRequestException('User not found');
-    }
-
-    if (user.profileStep !== ProfileStep.COMPANY) {
-      throw new BadRequestException(
-        'You already completed this step. Move to next step.',
-      );
     }
 
     const company = this.companyRepository.create({
@@ -42,15 +36,12 @@ export class CompanyService {
     });
 
     await this.companyRepository.save(company);
-
-    user.profileStep = ProfileStep.KYC;
-    await this.userRepository.save(user);
+    user.isEmploymentApproved = true;
 
     return {
       message: 'Company details added successfully',
       company_name: company.company_name,
       salary: company.salary,
-      nextStep: ProfileStep.KYC,
     };
   }
 }

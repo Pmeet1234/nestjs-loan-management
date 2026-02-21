@@ -4,7 +4,6 @@ import { Repository } from 'typeorm';
 
 import { User } from '../user/entities/user.entity';
 import { Kyc } from './entities/kyc.entity';
-import { ProfileStep } from '../user/enums/profile-step.enum';
 
 @Injectable()
 export class KycService {
@@ -23,19 +22,11 @@ export class KycService {
   ) {
     const user = await this.userRepository.findOne({
       where: { mobile_no },
-      // relations: ['kyc'],
+      relations: ['kyc'],
     });
 
     if (!user) {
       throw new BadRequestException('User not found');
-    }
-
-    // if (user.profileStep === ProfileStep.COMPLETED) {
-    //   throw new BadRequestException('KYC already added. You cannot change it.');
-    // }
-
-    if (user.profileStep !== ProfileStep.KYC) {
-      throw new BadRequestException('KYC already added. You cannot change it.');
     }
 
     const kyc = this.kycRepository.create({
@@ -46,14 +37,10 @@ export class KycService {
 
     await this.kycRepository.save(kyc);
 
-    user.profileStep = ProfileStep.LOAN;
-    await this.userRepository.save(user);
-
     return {
       message: 'KYC added successfully',
       adharcard_no: kyc.adharcard_no,
       pancard_no: kyc.pancard_no,
-      nextStep: ProfileStep.LOAN,
     };
   }
 }

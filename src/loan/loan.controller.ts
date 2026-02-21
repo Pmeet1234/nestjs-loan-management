@@ -9,7 +9,7 @@ export class LoanController {
   constructor(private readonly loanService: LoanService) {}
 
   @UseGuards(JwtAuthGuard)
-  @Post('apply')
+  @Post('apply-loan')
   applyLoan(@Request() req: RequestWithUser, @Body() body: ApplyLoanDto) {
     return this.loanService.applyLoan(req.user.mobile_no, body.requestedAmount);
   }

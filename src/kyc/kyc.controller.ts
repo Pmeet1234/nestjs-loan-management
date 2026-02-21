@@ -3,6 +3,7 @@ import { Controller, Post, Body, UseGuards, Request } from '@nestjs/common';
 import { KycService } from './kyc.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import type { RequestWithUser } from '../auth/interfaces/request-with-user.interface';
+import { AddKycDto } from 'src/auth/dto/kyc.dto';
 
 @Controller('kyc')
 export class KycController {
@@ -10,10 +11,7 @@ export class KycController {
 
   @UseGuards(JwtAuthGuard)
   @Post('add-kyc')
-  addKyc(
-    @Request() req: RequestWithUser,
-    @Body() body: { adharcard_no: string; pancard_no: string },
-  ) {
+  addKyc(@Request() req: RequestWithUser, @Body() body: AddKycDto) {
     const mobile_no = req.user.mobile_no;
 
     return this.kycService.addKycDetails(

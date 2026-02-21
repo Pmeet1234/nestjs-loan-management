@@ -5,7 +5,6 @@ import { JwtService } from '@nestjs/jwt';
 
 import { RegisterDto } from './dto/register.dto';
 import { User } from '../user/entities/user.entity';
-import { ProfileStep } from '../user/enums/profile-step.enum';
 
 @Injectable()
 export class AuthService {
@@ -118,7 +117,6 @@ export class AuthService {
     }
 
     user.password = create_password;
-    user.profileStep = ProfileStep.COMPANY;
 
     await this.userRepository.save(user);
 
@@ -147,7 +145,6 @@ export class AuthService {
 
     return {
       message: 'Login successful',
-      nextStep: user.profileStep,
       access_token: token,
       user: {
         username: user.username,
