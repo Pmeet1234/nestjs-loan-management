@@ -26,46 +26,50 @@ export class LoanService {
 
     if (!user) throw new BadRequestException('User not found');
 
-    // const loans = await this.loanRepository.find({
-    //   where: { user: { id: user.id } },
-    //   relations: ['user'],
-    // });
+    if (!user.isEmploymentApproved)
+      throw new BadRequestException('Employment not approved yet');
 
     if (!user.company)
       throw new BadRequestException('Company details not found');
 
     const salary = Number(user.company.salary);
+    if (requestedAmount < this.MIN_LOAN || requestedAmount > this.MAX_LOAN)
+      throw new BadRequestException(
+        `Loan amount must be between ₹${this.MIN_LOAN} and ₹${this.MAX_LOAN}`,
+      );
+
+    let eligibleAmount: number;
 
     if (salary < 50000) {
-      const eligibleAmount = salary * 0.25;
+      eligibleAmount = salary * 0.25;
 
-      if (requestedAmount > eligibleAmount) {
-        throw new BadRequestException(`Eligible only for ₹${eligibleAmount}`);
-      }
+      // if (requestedAmount > eligibleAmount) {
+      //   throw new BadRequestException(`Eligible only for ₹${eligibleAmount}`);
+      // }
+    } else {
+      eligibleAmount = requestedAmount;
     }
 
-    if (requestedAmount < this.MIN_LOAN)
-      throw new BadRequestException(`Minimum loan is ₹${this.MIN_LOAN}`);
-
-    if (requestedAmount > this.MAX_LOAN)
-      throw new BadRequestException(`Maximum loan is ₹${this.MAX_LOAN}`);
-
-    const interest = requestedAmount * this.INTEREST_RATE;
-    const total = requestedAmount + interest;
+    const interestRate = eligibleAmount * this.INTEREST_RATE;
+    const total = eligibleAmount + interestRate;
 
     const emiCount = requestedAmount >= 50000 ? 4 : 3;
-    const emiAmount = total / emiCount;
+    const emiAmount = parseFloat((total / emiCount).toFixed(2));
+    const totalRepayment = parseFloat(
+      (eligibleAmount + interestRate).toFixed(2),
+    );
     const totalLoansTaken = await this.loanRepository.count({
       where: { user: { id: user.id } },
     });
     const loan = this.loanRepository.create({
       requestedAmount,
-      approvedAmount: requestedAmount,
-      interestAmount: interest,
+      approvedAmount: eligibleAmount,
+      interestAmount: interestRate,
       totalPayable: total,
       emiCount,
       emiAmount,
       user,
+      status: 'active',
     });
 
     await this.loanRepository.save(loan);
@@ -74,14 +78,34 @@ export class LoanService {
       userId: user.id,
       username: user.username,
       mobile_no: user.mobile_no,
-      approvedAmount: requestedAmount,
-      interestAmount: interest,
+      salary,
+      requestedAmount,
+      approvedAmount: eligibleAmount,
+      interestRate: `${this.INTEREST_RATE * 100}%`,
+      totalInterest: interestRate,
       totalPayable: total,
       emiCount,
       emiAmount,
-
-      totalLoansTaken,
+      totalRepayment,
+      totalLoansTaken: totalLoansTaken + 1,
       // loans,
+      status: 'active',
+    };
+  }
+  async getLoanHistory(userId: number): Promise<any> {
+    const loans = await this.loanRepository.find({
+      where: { user: { id: userId } },
+    });
+
+    if (!loans || loans.length === 0) {
+      throw new BadRequestException('No loan history found for this user');
+    }
+
+    return {
+      message: 'Loan history fetched successfully',
+      userId,
+      totalLoans: loans.length,
+      loans,
     };
   }
 }

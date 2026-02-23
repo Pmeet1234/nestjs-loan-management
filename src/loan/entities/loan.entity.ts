@@ -6,7 +6,7 @@ import {
   CreateDateColumn,
 } from 'typeorm';
 import { User } from '../../user/entities/user.entity';
-
+export type LoanStatus = 'PENDING' | 'ACTIVE' | 'PAID';
 @Entity()
 export class Loan {
   @PrimaryGeneratedColumn()
@@ -26,12 +26,16 @@ export class Loan {
 
   @CreateDateColumn()
   createdAt!: Date;
+  @Column({ default: 0 })
+  amountPaid!: number;
 
   @Column()
   emiCount!: number;
 
   @Column('decimal', { precision: 10, scale: 2 })
   emiAmount!: number;
+  @Column({ default: 'active' })
+  status!: string;
 
   @ManyToOne(() => User, (user) => user.loans)
   user!: User;
