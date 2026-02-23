@@ -22,11 +22,7 @@ export class EmiController {
     @Body('loanId') loanId: number,
     @Body('amount') amount: number,
   ): Promise<any> {
-    return await this.emiService.payEmi(
-      Number(loanId),
-      // req.user.id,
-      Number(amount),
-    );
+    return await this.emiService.payEmi(Number(loanId), Number(amount));
   }
 
   @UseGuards(JwtAuthGuard)

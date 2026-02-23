@@ -28,6 +28,9 @@ export class KycService {
     if (!user) {
       throw new BadRequestException('User not found');
     }
+    if (user.kyc) {
+      throw new BadRequestException('KYC already added. You cannot change it.');
+    }
 
     const kyc = this.kycRepository.create({
       adharcard_no,

@@ -27,14 +27,15 @@ export class Loan {
 
   @CreateDateColumn()
   createdAt!: Date;
-  // @Column({ default: 0 })
-  // amountPaid!: number;
+  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
+  amountPaid!: number; // 👈 must exist
 
   @Column()
   emiCount!: number;
 
   @Column('decimal', { precision: 10, scale: 2 })
   emiAmount!: number;
+
   @Column({ default: 'active' })
   status!: string;
 
@@ -44,4 +45,7 @@ export class Loan {
   @ManyToOne(() => User, (user) => user.loans)
   @JoinColumn({ name: 'userId' })
   user!: User;
+
+  @Column({ default: 1 })
+  totalLoansTaken!: number;
 }

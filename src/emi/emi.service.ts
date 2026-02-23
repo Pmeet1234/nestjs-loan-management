@@ -1,7 +1,7 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { EmiPayment } from './entities/emi-payment.entity';
+import { EmiPayment } from '../emi/entities/emi-payment.entity';
 import { Loan } from '../loan/entities/loan.entity';
 
 @Injectable()
@@ -19,8 +19,6 @@ export class EmiService {
       where: { id: Number(loanId) },
       relations: ['user'],
     });
-    console.log('loan:', loan); // 👈 add this
-    console.log('loan.user:', loan?.user);
 
     if (!loan) throw new BadRequestException('Loan not found');
 
@@ -28,10 +26,30 @@ export class EmiService {
       throw new BadRequestException('Loan already completed');
 
     if (loan.status === 'defaulted')
-      throw new BadRequestException('Loan defaulted');
+      throw new BadRequestException(
+        'Loan defaulted. You are not eligible to pay EMI.',
+      );
 
+    if (!amount || amount <= 0) throw new BadRequestException('Invalid amount');
+
+    if (amount < Number(loan.emiAmount))
+      throw new BadRequestException(`Minimum EMI amount is ₹${loan.emiAmount}`);
+
+    const loanCreatedAt = new Date(loan.createdAt);
+    const loanEndDate = new Date(loanCreatedAt);
+    loanEndDate.setMonth(loanEndDate.getMonth() + loan.emiCount);
+
+    const today = new Date();
+
+    if (today > loanEndDate && loan.status !== 'completed') {
+      loan.status = 'defaulted';
+      await this.loanRepo.save(loan);
+      throw new BadRequestException(
+        'Loan end date passed. Loan is now defaulted.',
+      );
+    }
     const paidEmis = await this.emiRepo.find({
-      where: { loanId: parseInt(String(loanId)) },
+      where: { loanId: Number(loanId) },
     });
 
     const paidCount = paidEmis.filter(
@@ -43,11 +61,9 @@ export class EmiService {
 
     const emiNumber = paidCount + 1;
 
-    const loanCreatedAt = new Date(loan.createdAt);
     const dueDate = new Date(loanCreatedAt);
     dueDate.setMonth(dueDate.getMonth() + emiNumber);
 
-    const today = new Date();
     const isDelayed = today > dueDate;
     const penaltyAmount = isDelayed
       ? parseFloat((Number(loan.emiAmount) * 0.02).toFixed(2))
@@ -59,8 +75,19 @@ export class EmiService {
 
     const emiStatus = isDelayed ? 'delayed' : 'paid';
 
+    const totalAmountPaidSoFar = paidEmis.reduce(
+      (sum, e) => sum + Number(e.totalPaid),
+      0,
+    );
+    const newTotalAmountPaid = parseFloat(
+      (totalAmountPaidSoFar + totalPaid).toFixed(2),
+    );
+    const remainingBalance = parseFloat(
+      (Number(loan.totalPayable) - newTotalAmountPaid).toFixed(2),
+    );
+
     const emi = this.emiRepo.create({
-      loanId: parseInt(String(loanId)),
+      loanId: Number(loanId),
       userId: loan.user.id,
       emiNumber,
       emiAmount: amount,
@@ -73,10 +100,13 @@ export class EmiService {
 
     await this.emiRepo.save(emi);
 
+    loan.amountPaid = newTotalAmountPaid;
     if (emiNumber === loan.emiCount) {
       loan.status = 'completed';
-      await this.loanRepo.save(loan);
     }
+    await this.loanRepo.save(loan);
+
+    const remainingEmis = loan.emiCount - emiNumber;
 
     return {
       message: `EMI ${emiNumber} paid successfully`,
@@ -84,17 +114,19 @@ export class EmiService {
       emiAmount: amount,
       penaltyAmount,
       totalPaid,
+      totalAmountPaidSoFar: newTotalAmountPaid,
+      remainingBalance: remainingBalance > 0 ? remainingBalance : 0,
       dueDate,
       paidDate: today,
       status: emiStatus,
-      remainingEmis: loan.emiCount - emiNumber,
+      remainingEmis,
       loanStatus: emiNumber === loan.emiCount ? 'completed' : 'active',
     };
   }
 
   async getEmiStatus(loanId: number): Promise<any> {
     const loan = await this.loanRepo.findOne({
-      where: { id: parseInt(String(loanId)) },
+      where: { id: Number(loanId) },
     });
 
     if (!loan) throw new BadRequestException('Loan not found');
@@ -125,7 +157,13 @@ export class EmiService {
       loan.status = 'defaulted';
       await this.loanRepo.save(loan);
     }
-
+    const totalAmountPaid = emis.reduce(
+      (sum, e) => sum + Number(e.totalPaid),
+      0,
+    );
+    const remainingBalance = parseFloat(
+      (Number(loan.totalPayable) - totalAmountPaid).toFixed(2),
+    );
     return {
       loanId,
       loanStatus: loan.status,
@@ -133,6 +171,9 @@ export class EmiService {
       paidEmis: paidCount,
       remainingEmis,
       emiAmount: loan.emiAmount,
+      totalPayable: loan.totalPayable,
+      totalAmountPaid,
+      remainingBalance: remainingBalance > 0 ? remainingBalance : 0,
       nextDueDate: remainingEmis > 0 ? nextDueDate : null,
       loanEndDate,
       daysLeft: timeLeft > 0 ? timeLeft : 0,
@@ -149,10 +190,15 @@ export class EmiService {
     if (!emis || emis.length === 0)
       throw new BadRequestException('No EMI history found');
 
+    const totalAmountPaid = emis.reduce(
+      (sum, e) => sum + Number(e.totalPaid),
+      0,
+    );
     return {
       message: 'EMI history fetched successfully',
       loanId,
       totalEmis: emis.length,
+      totalAmountPaid,
       emis,
     };
   }
