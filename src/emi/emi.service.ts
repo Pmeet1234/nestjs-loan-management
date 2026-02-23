@@ -16,8 +16,11 @@ export class EmiService {
 
   async payEmi(loanId: number, userId: number): Promise<any> {
     const loan = await this.loanRepo.findOne({
-      where: { id: parseInt(String(loanId)) },
+      where: { id: Number(loanId) },
+      relations: ['user'],
     });
+    console.log('loan:', loan); // 👈 add this
+    console.log('loan.user:', loan?.user);
 
     if (!loan) throw new BadRequestException('Loan not found');
 
@@ -58,7 +61,7 @@ export class EmiService {
 
     const emi = this.emiRepo.create({
       loanId: parseInt(String(loanId)),
-      userId: parseInt(String(userId)),
+      userId: loan.user.id,
       emiNumber,
       emiAmount: loan.emiAmount,
       penaltyAmount,
@@ -84,7 +87,7 @@ export class EmiService {
       dueDate,
       paidDate: today,
       status: emiStatus,
-      remainingEmis: loan.emiCount - emiNumber, // 👈 added
+      remainingEmis: loan.emiCount - emiNumber,
       loanStatus: emiNumber === loan.emiCount ? 'completed' : 'active',
     };
   }

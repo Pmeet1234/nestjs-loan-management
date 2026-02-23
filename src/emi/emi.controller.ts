@@ -21,7 +21,10 @@ export class EmiController {
     @Request() req: RequestWithUser,
     @Body('loanId') loanId: number,
   ): Promise<any> {
-    return await this.emiService.payEmi(loanId, req.user.userId); // 👈 userId from JWT
+    console.log('req.user:', req.user);
+    console.log('loanId:', loanId); // 👈 check loanId
+    console.log('userId:', req.user.id);
+    return await this.emiService.payEmi(Number(loanId), req.user.id); // 👈 userId from JWT
   }
 
   @UseGuards(JwtAuthGuard)

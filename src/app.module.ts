@@ -10,6 +10,7 @@ import { ConfigModule } from '@nestjs/config';
 import { StatementModule } from './statement/statement.module';
 import { LoanModule } from './loan/loan.module';
 import { AdminModule } from './admin/admin.module';
+import { EmiModule } from './emi/emi.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { AdminModule } from './admin/admin.module';
     StatementModule,
     LoanModule,
     AdminModule,
+    EmiModule,
   ],
   controllers: [AppController],
   providers: [AppService],

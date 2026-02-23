@@ -4,6 +4,7 @@ import {
   Column,
   ManyToOne,
   CreateDateColumn,
+  JoinColumn,
 } from 'typeorm';
 import { User } from '../../user/entities/user.entity';
 export type LoanStatus = 'PENDING' | 'ACTIVE' | 'PAID';
@@ -37,6 +38,10 @@ export class Loan {
   @Column({ default: 'active' })
   status!: string;
 
+  @Column({ nullable: true })
+  userId!: number;
+
   @ManyToOne(() => User, (user) => user.loans)
+  @JoinColumn({ name: 'userId' })
   user!: User;
 }
