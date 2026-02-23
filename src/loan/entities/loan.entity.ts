@@ -27,8 +27,8 @@ export class Loan {
 
   @CreateDateColumn()
   createdAt!: Date;
-  @Column({ default: 0 })
-  amountPaid!: number;
+  // @Column({ default: 0 })
+  // amountPaid!: number;
 
   @Column()
   emiCount!: number;

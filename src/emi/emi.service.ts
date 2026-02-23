@@ -14,7 +14,7 @@ export class EmiService {
     private loanRepo: Repository<Loan>,
   ) {}
 
-  async payEmi(loanId: number, userId: number): Promise<any> {
+  async payEmi(loanId: number, amount: number): Promise<any> {
     const loan = await this.loanRepo.findOne({
       where: { id: Number(loanId) },
       relations: ['user'],
@@ -63,7 +63,7 @@ export class EmiService {
       loanId: parseInt(String(loanId)),
       userId: loan.user.id,
       emiNumber,
-      emiAmount: loan.emiAmount,
+      emiAmount: amount,
       penaltyAmount,
       totalPaid,
       dueDate,
@@ -81,7 +81,7 @@ export class EmiService {
     return {
       message: `EMI ${emiNumber} paid successfully`,
       emiNumber,
-      emiAmount: loan.emiAmount,
+      emiAmount: amount,
       penaltyAmount,
       totalPaid,
       dueDate,
