@@ -52,6 +52,6 @@ export class User {
   @OneToMany(() => Loan, (loan) => loan.user)
   loans!: Loan[];
 
-  // @Column({ default: false })
-  // hasAppliedLoan!: boolean;
+  @Column({ default: false })
+  hasAppliedLoan!: boolean;
 }

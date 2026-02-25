@@ -21,16 +21,32 @@ export class LoanService {
   async applyLoan(mobile_no: string, requestedAmount: number) {
     const user = await this.userRepository.findOne({
       where: { mobile_no },
-      relations: ['company'],
+      relations: ['company'], //load company relation
     });
 
-    if (!user) throw new BadRequestException('User not found');
+    if (!user) {
+      throw new BadRequestException({
+        success: false,
+        statusCode: 400,
+        message: 'User not found.',
+      });
+    }
 
-    if (!user.isEmploymentApproved)
-      throw new BadRequestException('Employment not approved yet');
+    if (!user.isEmploymentApproved) {
+      throw new BadRequestException({
+        success: false,
+        statusCode: 400,
+        message: 'Employee not yet approved.',
+      });
+    }
 
-    if (!user.company)
-      throw new BadRequestException('Company details not found');
+    if (!user.company) {
+      throw new BadRequestException({
+        success: false,
+        statusCode: 400,
+        message: 'Company Details not found.',
+      });
+    }
 
     const salary = Number(user.company.salary);
     if (requestedAmount < this.MIN_LOAN || requestedAmount > this.MAX_LOAN)
@@ -43,31 +59,39 @@ export class LoanService {
     });
 
     if (activeLoan) {
-      throw new BadRequestException(
-        `You already have an active loan (ID: ${activeLoan.id}). Please complete all EMIs first.`,
-      );
+      throw new BadRequestException({
+        success: false,
+        statusCode: 400,
+        message: `You already have an active loan (ID: ${activeLoan.id}). Please complete all EMIs first.`,
+      });
     }
-
+    // check pending loan
     const pendingLoan = await this.loanRepository.findOne({
       where: { user: { id: user.id }, status: 'pending' },
     });
 
     if (pendingLoan) {
-      throw new BadRequestException(
-        `You have a pending loan (ID: ${pendingLoan.id}). Please finish it first.`,
-      );
+      throw new BadRequestException({
+        success: false,
+        statusCode: 400,
+        message: `You have a pending loan (ID: ${pendingLoan.id}). Please finish it first.`,
+      });
     }
-
+    //check default loan
     const defaultedLoan = await this.loanRepository.findOne({
       where: { user: { id: user.id }, status: 'defaulted' },
     });
+    //        'Your previous loan was defaulted. You are not eligible for a new loan.',
 
     if (defaultedLoan) {
-      throw new BadRequestException(
-        'Your previous loan was defaulted. You are not eligible for a new loan.',
-      );
+      throw new BadRequestException({
+        success: false,
+        statusCode: 400,
+        message:
+          'Your previous loan was defaulted. You are not eligible for a new loan.',
+      });
     }
-
+    //If salary < 50k --> user eligible for 25% of salary only
     let eligibleAmount: number;
     if (salary < 50000) {
       eligibleAmount = salary * 0.25;
@@ -94,45 +118,73 @@ export class LoanService {
       totalPayable: total,
       emiCount,
       emiAmount,
+      amountPaid: 0,
       user,
       status: 'active',
-      totalLoansTaken: 1,
+      totalLoansTaken: totalLoansTaken + 1,
     });
 
     await this.loanRepository.save(loan);
 
     return {
-      message: 'Loan Approved Successfully',
-      userId: user.id,
-      username: user.username,
-      mobile_no: user.mobile_no,
-      salary,
-      requestedAmount,
-      approvedAmount: eligibleAmount,
-      interestRate: `${this.INTEREST_RATE * 100}%`,
-      totalInterest: interestRate,
-      totalPayable: total,
-      emiCount,
-      emiAmount,
-      totalRepayment,
-      totalLoansTaken,
-      status: 'active',
+      success: true,
+      statusCode: 201,
+      message: 'Loan approved successfully.',
+      data: {
+        loanId: loan.id,
+        userId: user.id,
+        username: user.username,
+        mobile_no: user.mobile_no,
+        salary,
+        requestedAmount,
+        approvedAmount: eligibleAmount,
+        interestRate: `${this.INTEREST_RATE * 100}%`,
+        totalInterest: interestRate,
+        totalPayable: total,
+        emiCount,
+        emiAmount,
+        totalRepayment,
+        totalLoansTaken,
+        status: 'active',
+      },
     };
   }
   async getLoanHistory(userId: number): Promise<any> {
     const loans = await this.loanRepository.find({
       where: { user: { id: userId } },
+      relations: ['user'],
+      order: { createdAt: 'ASC' },
     });
 
     if (!loans || loans.length === 0) {
-      throw new BadRequestException('No loan history found for this user');
+      throw new BadRequestException({
+        success: false,
+        statusCode: 400,
+        message: 'No loan history found for Use',
+      });
     }
 
     return {
-      message: 'Loan history fetched successfully',
-      userId,
-      totalLoans: loans.length,
-      loans,
+      success: true,
+      statusCode: 200,
+      message: 'Loan history fetched successfully.',
+      data: {
+        userId,
+        totalLoans: loans.length,
+        loans: loans.map((loan) => ({
+          loanId: loan.id,
+          username: loan.user.username,
+          mobile_no: loan.user.mobile_no,
+          requestedAmount: loan.requestedAmount,
+          approvedAmount: loan.approvedAmount,
+          totalPayable: loan.totalPayable,
+          amountPaid: loan.amountPaid,
+          emiCount: loan.emiCount,
+          emiAmount: loan.emiAmount,
+          status: loan.status,
+          createdAt: loan.createdAt,
+        })),
+      },
     };
   }
 
@@ -143,6 +195,7 @@ export class LoanService {
     username?: string,
     mobile_no?: string,
   ): Promise<any> {
+    //create dynamic query builder
     const query = this.loanRepository
       .createQueryBuilder('loan')
       .leftJoinAndSelect('loan.user', 'user')
@@ -198,7 +251,6 @@ export class LoanService {
       throw new BadRequestException('No loans found for the given filters');
     }
 
-    //  summary
     const totalLoanAmount = loans.reduce(
       (sum, l) => sum + Number(l.approvedAmount),
       0,
@@ -209,18 +261,78 @@ export class LoanService {
     );
 
     return {
-      message: 'Loan report fetched successfully',
-      totalLoans: loans.length,
-      totalLoanAmount,
-      totalAmountPaid,
-      filters: {
-        fromDate: fromDate ?? 'N/A',
-        toDate: toDate ?? 'N/A',
-        status: status ?? 'all',
-        username: username ?? 'all',
-        mobile_no: mobile_no ?? 'all',
+      success: true,
+      statusCode: 200,
+      message: 'Loan report fetched successfully.',
+      data: {
+        totalLoans: loans.length,
+        totalLoanAmount,
+        totalAmountPaid,
+        filters: {
+          fromDate: fromDate ?? 'N/A',
+          toDate: toDate ?? 'N/A',
+          status: status ?? 'all',
+          username: username ?? 'all',
+          mobile_no: mobile_no ?? 'all',
+        },
+        loans: loans.map((loan) => ({
+          loanId: loan.id,
+          username: loan.user.username,
+          mobile_no: loan.user.mobile_no,
+          requestedAmount: loan.requestedAmount,
+          approvedAmount: loan.approvedAmount,
+          totalPayable: loan.totalPayable,
+          amountPaid: loan.amountPaid,
+          emiCount: loan.emiCount,
+          emiAmount: loan.emiAmount,
+          status: loan.status,
+          createdAt: loan.createdAt,
+        })),
       },
-      loans: loans.map((loan) => ({
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  async getLoanById(loanId: number): Promise<any> {
+    //fetch specific loan with user detail
+    const loan = await this.loanRepository
+      .createQueryBuilder('loan')
+      .leftJoinAndSelect('loan.user', 'user')
+      .select([
+        'loan.id',
+        'loan.requestedAmount',
+        'loan.approvedAmount',
+        'loan.totalPayable',
+        'loan.amountPaid',
+        'loan.emiCount',
+        'loan.emiAmount',
+        'loan.status',
+        'loan.createdAt',
+        'loan.totalLoansTaken',
+        'user.id',
+        'user.username',
+        'user.mobile_no',
+      ])
+      .where('loan.id = :loanId', { loanId: Number(loanId) })
+      .getOne();
+
+    if (!loan) {
+      throw new BadRequestException({
+        success: false,
+        statusCode: 404,
+        message: `Loan with ID ${loanId} not found.`,
+      });
+    }
+
+    const remainingBalance = parseFloat(
+      (Number(loan.totalPayable) - Number(loan.amountPaid)).toFixed(2),
+    );
+
+    return {
+      success: true,
+      statusCode: 200,
+      message: 'Loan fetched successfully.',
+      data: {
         loanId: loan.id,
         username: loan.user.username,
         mobile_no: loan.user.mobile_no,
@@ -228,11 +340,13 @@ export class LoanService {
         approvedAmount: loan.approvedAmount,
         totalPayable: loan.totalPayable,
         amountPaid: loan.amountPaid,
+        remainingBalance: remainingBalance > 0 ? remainingBalance : 0,
         emiCount: loan.emiCount,
         emiAmount: loan.emiAmount,
         status: loan.status,
+        totalLoansTaken: loan.totalLoansTaken,
         createdAt: loan.createdAt,
-      })),
+      },
     };
   }
 }

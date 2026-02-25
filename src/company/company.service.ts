@@ -26,7 +26,11 @@ export class CompanyService {
     });
 
     if (!user) {
-      throw new BadRequestException('User not found');
+      throw new BadRequestException({
+        success: false,
+        statusCode: 404,
+        message: 'User not found with the provided mobile number.',
+      });
     }
 
     const company = this.companyRepository.create({
@@ -39,9 +43,14 @@ export class CompanyService {
     user.isEmploymentApproved = true;
 
     return {
-      message: 'Company details added successfully',
-      company_name: company.company_name,
-      salary: company.salary,
+      success: true,
+      statusCode: 201,
+      message: 'Company details added successfully.',
+      data: {
+        company_name: company.company_name,
+        salary: company.salary,
+        employmentStatus: 'approved',
+      },
     };
   }
 }

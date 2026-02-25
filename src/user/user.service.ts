@@ -29,7 +29,11 @@ export class UserService {
     });
 
     if (!user) {
-      throw new BadRequestException('User not found');
+      throw new BadRequestException({
+        success: false,
+        statusCode: 400,
+        message: 'User not found.',
+      });
     }
 
     return user;

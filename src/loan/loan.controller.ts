@@ -46,6 +46,11 @@ export class LoanController {
       mobile_no,
     );
   }
+  @UseGuards(AdminJwtGuard)
+  @Get(':loanId')
+  getLoanById(@Param('loanId') loanId: number) {
+    return this.loanService.getLoanById(loanId);
+  }
 }
 
 // **How to use in Postman:**

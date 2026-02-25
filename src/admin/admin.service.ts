@@ -1,6 +1,4 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
-/* eslint-disable @typescript-eslint/no-unsafe-call */
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import {
   Injectable,
   UnauthorizedException,
@@ -9,8 +7,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import * as bcrypt from 'bcrypt';
-
+import md5 from 'md5';
 import { Admin } from './entities/admin.entity';
 import { User } from '../user/entities/user.entity';
 
@@ -26,20 +23,27 @@ export class AdminService {
     private jwtService: JwtService,
   ) {}
 
+  private hashPassword(password: string): string {
+    return md5(password);
+  }
   async signup(email: string, password: string) {
     const existingAdmin = await this.adminRepository.findOne({
       where: { email },
     });
 
     if (existingAdmin) {
-      throw new BadRequestException('Email already exists');
+      throw new BadRequestException({
+        success: false,
+        statusCode: 400,
+        message: 'Email already exists.',
+        timestamp: new Date().toISOString(),
+      });
     }
 
-    const hash = await bcrypt.hash(password, 10);
-
+    const hashedPassword = this.hashPassword(password);
     const admin = this.adminRepository.create({
       email,
-      password: hash,
+      password: hashedPassword,
     });
 
     try {
@@ -52,7 +56,15 @@ export class AdminService {
       throw error;
     }
 
-    return { message: 'Admin registered successfully' };
+    return {
+      success: true,
+      statusCode: 201,
+      message: 'Admin registered successfully.',
+      data: {
+        email: admin.email,
+        role: 'admin',
+      },
+    };
   }
 
   async login(email: string, password: string) {
@@ -60,15 +72,28 @@ export class AdminService {
       where: { email },
     });
 
-    if (!admin || !(await bcrypt.compare(password, admin.password)))
-      throw new UnauthorizedException('Invalid credentials');
-
+    const hashedPassword = this.hashPassword(password);
+    if (!admin || admin.password !== hashedPassword) {
+      throw new UnauthorizedException({
+        success: false,
+        statusCode: 401,
+        message: 'Invalid credentials.',
+      });
+    }
     const token = this.jwtService.sign({
       id: admin.id,
       role: 'admin',
     });
 
-    return { access_token: token, message: 'Admin Login Successfully' };
+    return {
+      success: true,
+      statusCode: 200,
+      message: 'Admin login successful.',
+      data: {
+        access_token: token,
+        role: 'admin',
+      },
+    };
   }
 
   async approveEmployment(mobile_no: string) {
@@ -76,12 +101,25 @@ export class AdminService {
       where: { mobile_no },
     });
 
-    if (!user) throw new BadRequestException('User not found');
-
+    if (!user) {
+      throw new BadRequestException({
+        success: false,
+        statusCode: 404,
+        message: 'User not found.',
+      });
+    }
     user.isEmploymentApproved = true;
 
     await this.userRepository.save(user);
 
-    return { message: 'Employment Approved Successfully' };
+    return {
+      success: true,
+      statusCode: 200,
+      message: 'Employment approved successfully.',
+      data: {
+        mobile_no: user.mobile_no,
+        employmentStatus: 'approved',
+      },
+    };
   }
 }

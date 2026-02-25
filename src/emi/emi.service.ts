@@ -20,33 +20,57 @@ export class EmiService {
       relations: ['user'],
     });
 
-    if (!loan) throw new BadRequestException('Loan not found');
+    if (!loan) {
+      throw new BadRequestException({
+        success: false,
+        statusCode: 400,
+        message: 'Loan not found.',
+      });
+    }
 
-    if (loan.status === 'completed')
-      throw new BadRequestException('Loan already completed');
+    if (loan.status === 'completed') {
+      throw new BadRequestException({
+        success: false,
+        statusCode: 400,
+        message: 'Loan already completed.',
+      });
+    }
 
     if (loan.status === 'defaulted')
-      throw new BadRequestException(
-        'Loan defaulted. You are not eligible to pay EMI.',
-      );
+      throw new BadRequestException({
+        success: false,
+        statusCode: 400,
+        message: 'Loan Default.You are not eligible for loan.',
+      });
 
-    if (!amount || amount <= 0) throw new BadRequestException('Invalid amount');
-
-    if (amount < Number(loan.emiAmount))
-      throw new BadRequestException(`Minimum EMI amount is ₹${loan.emiAmount}`);
-
+    if (!amount || amount <= 0) {
+      throw new BadRequestException({
+        success: false,
+        statusCode: 400,
+        message: 'Invalid amount.',
+      });
+    }
+    //`Minimum EMI amount is ₹${loan.emiAmount}`
+    if (amount < Number(loan.emiAmount)) {
+      throw new BadRequestException({
+        success: false,
+        statusCode: 400,
+        message: `Minimum EMI amount is ₹${loan.emiAmount}`,
+      });
+    }
     const loanCreatedAt = new Date(loan.createdAt);
     const loanEndDate = new Date(loanCreatedAt);
     loanEndDate.setMonth(loanEndDate.getMonth() + loan.emiCount);
-
     const today = new Date();
 
     if (today > loanEndDate && loan.status !== 'completed') {
       loan.status = 'defaulted';
       await this.loanRepo.save(loan);
-      throw new BadRequestException(
-        'Loan end date passed. Loan is now defaulted.',
-      );
+      throw new BadRequestException({
+        success: false,
+        statusCode: 400,
+        message: 'Loan ended date passed.',
+      });
     }
     const paidEmis = await this.emiRepo.find({
       where: { loanId: Number(loanId) },
@@ -56,8 +80,13 @@ export class EmiService {
       (e) => e.status === 'paid' || e.status === 'delayed',
     ).length;
 
-    if (paidCount >= loan.emiCount)
-      throw new BadRequestException('All EMIs already paid');
+    if (paidCount >= loan.emiCount) {
+      throw new BadRequestException({
+        success: false,
+        statusCode: 400,
+        message: 'All Emi already paid',
+      });
+    }
 
     const emiNumber = paidCount + 1;
 
@@ -69,9 +98,7 @@ export class EmiService {
       ? parseFloat((Number(loan.emiAmount) * 0.02).toFixed(2))
       : 0;
 
-    const totalPaid = parseFloat(
-      (Number(loan.emiAmount) + penaltyAmount).toFixed(2),
-    );
+    const totalPaid = parseFloat((Number(amount) + penaltyAmount).toFixed(2));
 
     const emiStatus = isDelayed ? 'delayed' : 'paid';
 
@@ -82,9 +109,11 @@ export class EmiService {
     const newTotalAmountPaid = parseFloat(
       (totalAmountPaidSoFar + totalPaid).toFixed(2),
     );
-    const remainingBalance = parseFloat(
-      (Number(loan.totalPayable) - newTotalAmountPaid).toFixed(2),
-    );
+    const totalPayable = Number(loan.totalPayable);
+    const isOverPaid = newTotalAmountPaid > totalPayable;
+    const ExcessAmount = isOverPaid
+      ? parseFloat((newTotalAmountPaid - totalPayable).toFixed(2))
+      : 0;
 
     const emi = this.emiRepo.create({
       loanId: Number(loanId),
@@ -101,26 +130,41 @@ export class EmiService {
     await this.emiRepo.save(emi);
 
     loan.amountPaid = newTotalAmountPaid;
-    if (emiNumber === loan.emiCount) {
-      loan.status = 'completed';
-    }
+
+    const isLoanCompleted =
+      emiNumber === loan.emiCount || newTotalAmountPaid >= totalPayable;
+    if (isLoanCompleted) loan.status = 'completed';
+
     await this.loanRepo.save(loan);
 
-    const remainingEmis = loan.emiCount - emiNumber;
+    const remainingEmis = isLoanCompleted ? 0 : loan.emiCount - emiNumber;
 
     return {
-      message: `EMI ${emiNumber} paid successfully`,
-      emiNumber,
-      emiAmount: amount,
-      penaltyAmount,
-      totalPaid,
-      totalAmountPaidSoFar: newTotalAmountPaid,
-      remainingBalance: remainingBalance > 0 ? remainingBalance : 0,
-      dueDate,
-      paidDate: today,
-      status: emiStatus,
-      remainingEmis,
-      loanStatus: emiNumber === loan.emiCount ? 'completed' : 'active',
+      success: true,
+      statusCode: 200,
+      message: isLoanCompleted
+        ? 'Loan completed successfully. You are now eligible to apply for a new loan.'
+        : `EMI ${emiNumber} paid successfully.`,
+      data: {
+        loanId: Number(loanId),
+        emiNumber,
+        emiAmount: amount,
+        penaltyAmount,
+        totalPaid,
+        totalAmountPaidSoFar: newTotalAmountPaid,
+        remainingBalance: isOverPaid
+          ? 0
+          : parseFloat((totalPayable - newTotalAmountPaid).toFixed(2)),
+        ...(isOverPaid && {
+          excessAmount: ExcessAmount,
+          excessMessage: `₹${ExcessAmount} paid extra. It will be adjusted or refunded.`,
+        }),
+        dueDate,
+        paidDate: today,
+        status: emiStatus,
+        remainingEmis,
+        loanStatus: isLoanCompleted ? 'completed' : 'active',
+      },
     };
   }
 
@@ -129,7 +173,13 @@ export class EmiService {
       where: { id: Number(loanId) },
     });
 
-    if (!loan) throw new BadRequestException('Loan not found');
+    if (!loan) {
+      throw new BadRequestException({
+        success: false,
+        statusCode: 400,
+        message: 'Loan not found.',
+      });
+    }
 
     const emis = await this.emiRepo.find({
       where: { loanId: parseInt(String(loanId)) },
@@ -165,19 +215,27 @@ export class EmiService {
       (Number(loan.totalPayable) - totalAmountPaid).toFixed(2),
     );
     return {
-      loanId,
-      loanStatus: loan.status,
-      totalEmis: loan.emiCount,
-      paidEmis: paidCount,
-      remainingEmis,
-      emiAmount: loan.emiAmount,
-      totalPayable: loan.totalPayable,
-      totalAmountPaid,
-      remainingBalance: remainingBalance > 0 ? remainingBalance : 0,
-      nextDueDate: remainingEmis > 0 ? nextDueDate : null,
-      loanEndDate,
-      daysLeft: timeLeft > 0 ? timeLeft : 0,
-      message: timeLeft <= 0 ? 'Loan time finished' : `${timeLeft} days left`,
+      success: true,
+      statusCode: 200,
+      message: 'EMI status fetched successfully.',
+      data: {
+        loanId,
+        loanStatus: loan.status,
+        totalEmis: loan.emiCount,
+        paidEmis: paidCount,
+        remainingEmis,
+        emiAmount: loan.emiAmount,
+        totalPayable: loan.totalPayable,
+        totalAmountPaid,
+        remainingBalance: remainingBalance > 0 ? remainingBalance : 0,
+        nextDueDate: remainingEmis > 0 ? nextDueDate : null,
+        loanEndDate,
+        daysLeft: timeLeft > 0 ? timeLeft : 0,
+        loanTimeMessage:
+          timeLeft <= 0
+            ? 'Loan duration completed.'
+            : `${timeLeft} days remaining.`,
+      },
     };
   }
 
@@ -187,19 +245,28 @@ export class EmiService {
       order: { emiNumber: 'ASC' }, // 👈 ordered by emiNumber
     });
 
-    if (!emis || emis.length === 0)
-      throw new BadRequestException('No EMI history found');
+    if (!emis || emis.length === 0) {
+      throw new BadRequestException({
+        success: false,
+        statusCode: 400,
+        message: 'NO EMI history found.',
+      });
+    }
 
     const totalAmountPaid = emis.reduce(
       (sum, e) => sum + Number(e.totalPaid),
       0,
     );
     return {
-      message: 'EMI history fetched successfully',
-      loanId,
-      totalEmis: emis.length,
-      totalAmountPaid,
-      emis,
+      success: true,
+      statusCode: 200,
+      message: 'EMI history fetched successfully.',
+      data: {
+        loanId,
+        totalEmis: emis.length,
+        totalAmountPaid,
+        emis,
+      },
     };
   }
 }

@@ -9,7 +9,6 @@ import {
 } from '@nestjs/common';
 import { EmiService } from './emi.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import type { RequestWithUser } from '../auth/interfaces/request-with-user.interface';
 
 @Controller('emi')
 export class EmiController {
@@ -18,7 +17,6 @@ export class EmiController {
   @UseGuards(JwtAuthGuard)
   @Post('pay')
   async payEmi(
-    @Request() req: RequestWithUser,
     @Body('loanId') loanId: number,
     @Body('amount') amount: number,
   ): Promise<any> {

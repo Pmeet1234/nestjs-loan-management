@@ -26,10 +26,18 @@ export class KycService {
     });
 
     if (!user) {
-      throw new BadRequestException('User not found');
+      throw new BadRequestException({
+        success: false,
+        statusCode: 404,
+        message: 'User not found with the provided mobile number.',
+      });
     }
     if (user.kyc) {
-      throw new BadRequestException('KYC already added. You cannot change it.');
+      throw new BadRequestException({
+        success: false,
+        statusCode: 400,
+        message: 'KYC already exists. Modification is not allowed.',
+      });
     }
 
     const kyc = this.kycRepository.create({
@@ -40,10 +48,17 @@ export class KycService {
 
     await this.kycRepository.save(kyc);
 
+    const maskedAadhar = 'XXXX-XXXX-' + adharcard_no.slice(-4);
+    const maskedPan = pancard_no.slice(0, 2) + 'XXXXXX' + pancard_no.slice(-2);
     return {
-      message: 'KYC added successfully',
-      adharcard_no: kyc.adharcard_no,
-      pancard_no: kyc.pancard_no,
+      success: true,
+      statusCode: 201,
+      message: 'KYC details added successfully.',
+      data: {
+        adharcard_no: maskedAadhar,
+        pancard_no: maskedPan,
+        kycStatus: 'verified',
+      },
     };
   }
 }
