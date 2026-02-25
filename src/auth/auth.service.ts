@@ -192,12 +192,15 @@ export class AuthService {
         success: false,
         statusCode: 401,
         message: 'Invalid mobile number or password.',
-        timestamp: new Date().toISOString(),
       });
     }
 
     if (hashedInputPassword !== user.password) {
-      throw new BadRequestException('Invalid mobile number or password');
+      throw new BadRequestException({
+        success: false,
+        statusCode: 401,
+        message: 'Invalid mobile number or password.',
+      });
     }
     const payload = {
       id: user.id,
