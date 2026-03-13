@@ -3,6 +3,8 @@ import {
   Injectable,
   UnauthorizedException,
   BadRequestException,
+  ConflictException,
+  NotFoundException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -32,11 +34,10 @@ export class AdminService {
     });
 
     if (existingAdmin) {
-      throw new BadRequestException({
+      throw new ConflictException({
         success: false,
-        statusCode: 400,
+        statusCode: 409,
         message: 'Email already exists.',
-        timestamp: new Date().toISOString(),
       });
     }
 
@@ -87,7 +88,7 @@ export class AdminService {
 
     return {
       success: true,
-      statusCode: 200,
+      statusCode: 201,
       message: 'Admin login successful.',
       data: {
         access_token: token,
@@ -102,7 +103,7 @@ export class AdminService {
     });
 
     if (!user) {
-      throw new BadRequestException({
+      throw new NotFoundException({
         success: false,
         statusCode: 404,
         message: 'User not found.',
@@ -114,7 +115,7 @@ export class AdminService {
 
     return {
       success: true,
-      statusCode: 200,
+      statusCode: 201,
       message: 'Employment approved successfully.',
       data: {
         mobile_no: user.mobile_no,

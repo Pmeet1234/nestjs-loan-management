@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
@@ -26,7 +26,7 @@ export class CompanyService {
     });
 
     if (!user) {
-      throw new BadRequestException({
+      throw new NotFoundException({
         success: false,
         statusCode: 404,
         message: 'User not found with the provided mobile number.',

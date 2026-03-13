@@ -54,4 +54,5 @@ export class User {
 
   @Column({ default: false })
   hasAppliedLoan!: boolean;
+  displayTime: any;
 }

@@ -1,7 +1,10 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-
 import { User } from '../user/entities/user.entity';
 import { Kyc } from './entities/kyc.entity';
 
@@ -26,18 +29,44 @@ export class KycService {
     });
 
     if (!user) {
-      throw new BadRequestException({
+      throw new NotFoundException({
         success: false,
         statusCode: 404,
         message: 'User not found with the provided mobile number.',
       });
     }
     if (user.kyc) {
-      throw new BadRequestException({
+      throw new ConflictException({
         success: false,
-        statusCode: 400,
+        statusCode: 409,
         message: 'KYC already exists. Modification is not allowed.',
       });
+    }
+    //
+
+    const existingKyc = await this.kycRepository
+      .createQueryBuilder('kyc')
+      .where('kyc.adharcard_no = :adharcard_no', { adharcard_no })
+      .orWhere('kyc.pancard_no = :pancard_no', { pancard_no })
+      .getOne();
+
+    if (existingKyc) {
+      // ✅ Tell user exactly which field is duplicate
+      if (existingKyc.adharcard_no === adharcard_no) {
+        throw new ConflictException({
+          success: false,
+          statusCode: 409,
+          message: 'Aadhaar number is already registered with another account.',
+        });
+      }
+
+      if (existingKyc.pancard_no === pancard_no) {
+        throw new ConflictException({
+          success: false,
+          statusCode: 409,
+          message: 'PAN number is already registered with another account.',
+        });
+      }
     }
 
     const kyc = this.kycRepository.create({

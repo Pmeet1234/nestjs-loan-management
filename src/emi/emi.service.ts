@@ -1,212 +1,208 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+  ConflictException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { EmiPayment } from '../emi/entities/emi-payment.entity';
 import { Loan } from '../loan/entities/loan.entity';
+import { PayEmiDto } from 'src/auth/dto/pay_emi.dto';
 
 @Injectable()
 export class EmiService {
   constructor(
-    @InjectRepository(EmiPayment)
-    private emiRepo: Repository<EmiPayment>,
-
-    @InjectRepository(Loan)
-    private loanRepo: Repository<Loan>,
+    @InjectRepository(EmiPayment) private emiRepo: Repository<EmiPayment>,
+    @InjectRepository(Loan) private loanRepo: Repository<Loan>,
   ) {}
 
-  async payEmi(loanId: number, amount: number): Promise<any> {
+  async payEmi(dto: PayEmiDto) {
     const loan = await this.loanRepo.findOne({
-      where: { id: Number(loanId) },
+      where: { id: dto.loanId },
       relations: ['user'],
     });
 
-    if (!loan) {
-      throw new BadRequestException({
+    if (!loan)
+      throw new NotFoundException({
         success: false,
-        statusCode: 400,
+        statusCode: 404,
         message: 'Loan not found.',
       });
-    }
-
-    if (loan.status === 'completed') {
-      throw new BadRequestException({
+    if (loan.status === 'completed')
+      throw new ConflictException({
         success: false,
-        statusCode: 400,
+        statusCode: 409,
         message: 'Loan already completed.',
       });
-    }
-
     if (loan.status === 'defaulted')
-      throw new BadRequestException({
+      throw new ForbiddenException({
         success: false,
-        statusCode: 400,
-        message: 'Loan Default.You are not eligible for loan.',
+        statusCode: 403,
+        message: 'Loan defaulted. Not eligible.',
       });
 
-    if (!amount || amount <= 0) {
-      throw new BadRequestException({
-        success: false,
-        statusCode: 400,
-        message: 'Invalid amount.',
-      });
-    }
-    //`Minimum EMI amount is ₹${loan.emiAmount}`
-    if (amount < Number(loan.emiAmount)) {
+    if (dto.amount < Number(loan.emiAmount))
       throw new BadRequestException({
         success: false,
         statusCode: 400,
         message: `Minimum EMI amount is ₹${loan.emiAmount}`,
       });
-    }
-    const loanCreatedAt = new Date(loan.createdAt);
-    const loanEndDate = new Date(loanCreatedAt);
-    loanEndDate.setMonth(loanEndDate.getMonth() + loan.emiCount);
-    const today = new Date();
 
-    if (today > loanEndDate && loan.status !== 'completed') {
+    const loanCreatedAt = new Date(loan.createdAt);
+
+    // Check if loan duration has ended → auto default
+    if (dto.isLoanDefaulted(loanCreatedAt, loan.emiCount)) {
       loan.status = 'defaulted';
+      loan.user.hasAppliedLoan = false;
+      await this.loanRepo.manager.save(loan.user);
       await this.loanRepo.save(loan);
-      throw new BadRequestException({
+      throw new ConflictException({
         success: false,
-        statusCode: 400,
-        message: 'Loan ended date passed.',
+        statusCode: 409,
+        message: 'Loan duration ended.',
       });
     }
-    const paidEmis = await this.emiRepo.find({
-      where: { loanId: Number(loanId) },
-    });
 
+    const paidEmis = await this.emiRepo.find({ where: { loanId: dto.loanId } });
     const paidCount = paidEmis.filter(
       (e) => e.status === 'paid' || e.status === 'delayed',
     ).length;
 
-    if (paidCount >= loan.emiCount) {
-      throw new BadRequestException({
+    if (paidCount >= loan.emiCount)
+      throw new ConflictException({
         success: false,
-        statusCode: 400,
-        message: 'All Emi already paid',
+        statusCode: 409,
+        message: 'All EMIs already paid.',
       });
-    }
 
     const emiNumber = paidCount + 1;
-
-    const dueDate = new Date(loanCreatedAt);
-    dueDate.setMonth(dueDate.getMonth() + emiNumber);
-
-    const isDelayed = today > dueDate;
+    const dueDate = dto.getEmiDueDate(loanCreatedAt, emiNumber);
+    const isDelayed = dto.isDelayed(dueDate);
     const penaltyAmount = isDelayed
-      ? parseFloat((Number(loan.emiAmount) * 0.02).toFixed(2))
+      ? dto.calculatePenalty(Number(loan.emiAmount))
       : 0;
-
-    const totalPaid = parseFloat((Number(amount) + penaltyAmount).toFixed(2));
-
-    const emiStatus = isDelayed ? 'delayed' : 'paid';
+    const totalPaid = dto.calculateTotalPaid(penaltyAmount);
+    const totalPayable = Number(loan.totalPayable);
 
     const totalAmountPaidSoFar = paidEmis.reduce(
       (sum, e) => sum + Number(e.totalPaid),
       0,
     );
-    const newTotalAmountPaid = parseFloat(
-      (totalAmountPaidSoFar + totalPaid).toFixed(2),
+    const remainingBalance = parseFloat(
+      (totalPayable - totalAmountPaidSoFar).toFixed(2),
     );
-    const totalPayable = Number(loan.totalPayable);
-    const isOverPaid = newTotalAmountPaid > totalPayable;
-    const ExcessAmount = isOverPaid
-      ? parseFloat((newTotalAmountPaid - totalPayable).toFixed(2))
-      : 0;
 
-    const emi = this.emiRepo.create({
-      loanId: Number(loanId),
-      userId: loan.user.id,
-      emiNumber,
-      emiAmount: amount,
-      penaltyAmount,
+    if (dto.isOverPayment(totalPaid, remainingBalance))
+      throw new BadRequestException({
+        success: false,
+        statusCode: 400,
+        message: `Payment ₹${totalPaid} exceeds remaining balance ₹${remainingBalance}.`,
+      });
+
+    const newTotalAmountPaid = dto.calculateNewTotalPaid(
+      totalAmountPaidSoFar,
       totalPaid,
-      dueDate,
-      paidDate: today,
-      status: emiStatus,
-    });
+    );
+    const emiStatus = isDelayed ? 'delayed' : 'paid';
 
-    await this.emiRepo.save(emi);
+    await this.emiRepo.save(
+      this.emiRepo.create({
+        loanId: dto.loanId,
+        userId: loan.user.id,
+        emiNumber,
+        emiAmount: dto.amount,
+        penaltyAmount,
+        totalPaid,
+        dueDate,
+        paidDate: new Date(),
+        status: emiStatus,
+      }),
+    );
 
     loan.amountPaid = newTotalAmountPaid;
+    const isLoanCompleted = dto.isLoanCompleted(
+      emiNumber,
+      loan.emiCount,
+      newTotalAmountPaid,
+      totalPayable,
+    );
 
-    const isLoanCompleted =
-      emiNumber === loan.emiCount || newTotalAmountPaid >= totalPayable;
-    if (isLoanCompleted) loan.status = 'completed';
-
+    if (isLoanCompleted) {
+      loan.status = 'completed';
+      loan.user.hasAppliedLoan = false;
+      await this.loanRepo.manager.save(loan.user);
+    }
     await this.loanRepo.save(loan);
 
-    const remainingEmis = isLoanCompleted ? 0 : loan.emiCount - emiNumber;
+    const newRemainingBalance = parseFloat(
+      (totalPayable - newTotalAmountPaid).toFixed(2),
+    );
 
     return {
       success: true,
       statusCode: 200,
       message: isLoanCompleted
-        ? 'Loan completed successfully. You are now eligible to apply for a new loan.'
+        ? 'Loan completed. You can now apply for a new loan.'
         : `EMI ${emiNumber} paid successfully.`,
       data: {
-        loanId: Number(loanId),
+        loanId: dto.loanId,
         emiNumber,
-        emiAmount: amount,
+        emiAmount: dto.amount,
         penaltyAmount,
         totalPaid,
         totalAmountPaidSoFar: newTotalAmountPaid,
-        remainingBalance: isOverPaid
-          ? 0
-          : parseFloat((totalPayable - newTotalAmountPaid).toFixed(2)),
-        ...(isOverPaid && {
-          excessAmount: ExcessAmount,
-          excessMessage: `₹${ExcessAmount} paid extra. It will be adjusted or refunded.`,
-        }),
+        remainingBalance: Math.max(newRemainingBalance, 0),
         dueDate,
-        paidDate: today,
+        paidDate: new Date(),
         status: emiStatus,
-        remainingEmis,
+        remainingEmis: isLoanCompleted ? 0 : loan.emiCount - emiNumber,
         loanStatus: isLoanCompleted ? 'completed' : 'active',
       },
     };
   }
 
-  async getEmiStatus(loanId: number): Promise<any> {
+  async getEmiStatus(loanId: number) {
     const loan = await this.loanRepo.findOne({
-      where: { id: Number(loanId) },
+      where: { id: loanId },
+      relations: ['user'],
     });
 
-    if (!loan) {
-      throw new BadRequestException({
+    if (!loan)
+      throw new NotFoundException({
         success: false,
-        statusCode: 400,
+        statusCode: 404,
         message: 'Loan not found.',
       });
-    }
 
-    const emis = await this.emiRepo.find({
-      where: { loanId: parseInt(String(loanId)) },
-    });
-
+    const emis = await this.emiRepo.find({ where: { loanId } });
     const paidCount = emis.filter(
       (e) => e.status === 'paid' || e.status === 'delayed',
     ).length;
-
-    const remainingEmis = loan.emiCount - paidCount;
-
     const loanCreatedAt = new Date(loan.createdAt);
-    const nextDueDate = new Date(loanCreatedAt);
-    nextDueDate.setMonth(nextDueDate.getMonth() + paidCount + 1);
+    const today = new Date();
 
     const loanEndDate = new Date(loanCreatedAt);
     loanEndDate.setMonth(loanEndDate.getMonth() + loan.emiCount);
 
-    const today = new Date();
-    const timeLeft = Math.ceil(
-      (loanEndDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
-    );
+    const nextDueDate = new Date(loanCreatedAt);
+    nextDueDate.setMonth(nextDueDate.getMonth() + paidCount + 1);
 
+    const daysLeft = Math.max(
+      Math.ceil((loanEndDate.getTime() - today.getTime()) / 86400000),
+      0,
+    );
+    const remainingEmis = loan.emiCount - paidCount;
+
+    // Auto default if loan duration ended
     if (today > loanEndDate && loan.status !== 'completed') {
       loan.status = 'defaulted';
+      loan.user.hasAppliedLoan = false;
+      await this.loanRepo.manager.save(loan.user);
       await this.loanRepo.save(loan);
     }
+
     const totalAmountPaid = emis.reduce(
       (sum, e) => sum + Number(e.totalPaid),
       0,
@@ -214,6 +210,7 @@ export class EmiService {
     const remainingBalance = parseFloat(
       (Number(loan.totalPayable) - totalAmountPaid).toFixed(2),
     );
+
     return {
       success: true,
       statusCode: 200,
@@ -227,46 +224,41 @@ export class EmiService {
         emiAmount: loan.emiAmount,
         totalPayable: loan.totalPayable,
         totalAmountPaid,
-        remainingBalance: remainingBalance > 0 ? remainingBalance : 0,
+        remainingBalance: Math.max(remainingBalance, 0),
         nextDueDate: remainingEmis > 0 ? nextDueDate : null,
         loanEndDate,
-        daysLeft: timeLeft > 0 ? timeLeft : 0,
+        daysLeft,
         loanTimeMessage:
-          timeLeft <= 0
+          daysLeft <= 0
             ? 'Loan duration completed.'
-            : `${timeLeft} days remaining.`,
+            : `${daysLeft} days remaining.`,
       },
     };
   }
 
-  async getEmiHistory(loanId: number): Promise<any> {
+  async getEmiHistory(loanId: number) {
     const emis = await this.emiRepo.find({
-      where: { loanId: parseInt(String(loanId)) },
-      order: { emiNumber: 'ASC' }, // 👈 ordered by emiNumber
+      where: { loanId },
+      order: { emiNumber: 'ASC' },
     });
 
-    if (!emis || emis.length === 0) {
-      throw new BadRequestException({
+    if (!emis.length)
+      throw new NotFoundException({
         success: false,
-        statusCode: 400,
-        message: 'NO EMI history found.',
+        statusCode: 404,
+        message: 'No EMI history found.',
       });
-    }
 
     const totalAmountPaid = emis.reduce(
       (sum, e) => sum + Number(e.totalPaid),
       0,
     );
+
     return {
       success: true,
       statusCode: 200,
       message: 'EMI history fetched successfully.',
-      data: {
-        loanId,
-        totalEmis: emis.length,
-        totalAmountPaid,
-        emis,
-      },
+      data: { loanId, totalEmis: emis.length, totalAmountPaid, emis },
     };
   }
 }

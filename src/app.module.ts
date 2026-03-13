@@ -11,6 +11,7 @@ import { StatementModule } from './statement/statement.module';
 import { LoanModule } from './loan/loan.module';
 import { AdminModule } from './admin/admin.module';
 import { EmiModule } from './emi/emi.module';
+import { ReportModule } from './report/report.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { EmiModule } from './emi/emi.module';
     LoanModule,
     AdminModule,
     EmiModule,
+    ReportModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -11,7 +11,6 @@ export class UserAuthGuard extends AuthGuard('jwt') {
   handleRequest(err: any, user: any): any {
     if (err || !user) throw new UnauthorizedException('User access required');
 
-    // ✅ Block admin from using user routes
     if ((user as { role: string }).role === 'admin') {
       throw new UnauthorizedException('Admin cannot access user routes');
     }

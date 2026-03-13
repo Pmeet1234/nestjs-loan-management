@@ -1,130 +1,111 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+  ForbiddenException,
+  ConflictException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-
+import { Response } from 'express';
 import { Loan } from './entities/loan.entity';
 import { User } from '../user/entities/user.entity';
+
 @Injectable()
 export class LoanService {
-  private MIN_LOAN = 10000;
-  private MAX_LOAN = 100000;
-  private INTEREST_RATE = 0.1;
+  private readonly MIN_LOAN = 10000;
+  private readonly MAX_LOAN = 100000;
+  private readonly INTEREST_RATE = 0.1;
 
   constructor(
-    @InjectRepository(Loan)
-    private loanRepository: Repository<Loan>,
-
-    @InjectRepository(User)
-    private userRepository: Repository<User>,
+    @InjectRepository(Loan) private loanRepo: Repository<Loan>,
+    @InjectRepository(User) private userRepo: Repository<User>,
   ) {}
 
+  // ─── APPLY LOAN ───────────────────────────────────────────────
   async applyLoan(mobile_no: string, requestedAmount: number) {
-    const user = await this.userRepository.findOne({
+    const user = await this.userRepo.findOne({
       where: { mobile_no },
-      relations: ['company'], //load company relation
+      relations: ['company'],
     });
 
-    if (!user) {
-      throw new BadRequestException({
+    if (!user)
+      throw new NotFoundException({
         success: false,
-        statusCode: 400,
+        statusCode: 404,
         message: 'User not found.',
       });
-    }
-
-    if (!user.isEmploymentApproved) {
-      throw new BadRequestException({
+    if (!user.isEmploymentApproved)
+      throw new ForbiddenException({
         success: false,
-        statusCode: 400,
-        message: 'Employee not yet approved.',
+        statusCode: 403,
+        message: 'Employment not yet approved.',
       });
-    }
-
-    if (!user.company) {
-      throw new BadRequestException({
+    if (!user.company)
+      throw new NotFoundException({
         success: false,
-        statusCode: 400,
-        message: 'Company Details not found.',
+        statusCode: 404,
+        message: 'Company details not found.',
       });
-    }
 
     const salary = Number(user.company.salary);
+
     if (requestedAmount < this.MIN_LOAN || requestedAmount > this.MAX_LOAN)
       throw new BadRequestException(
         `Loan amount must be between ₹${this.MIN_LOAN} and ₹${this.MAX_LOAN}`,
       );
 
-    const activeLoan = await this.loanRepository.findOne({
-      where: { user: { id: user.id }, status: 'active' },
+    const existingLoan = await this.loanRepo.findOne({
+      where: [
+        { user: { id: user.id }, status: 'active' },
+        { user: { id: user.id }, status: 'pending' },
+        { user: { id: user.id }, status: 'defaulted' },
+      ],
     });
 
-    if (activeLoan) {
-      throw new BadRequestException({
+    if (existingLoan?.status === 'active')
+      throw new ConflictException({
         success: false,
-        statusCode: 400,
-        message: `You already have an active loan (ID: ${activeLoan.id}). Please complete all EMIs first.`,
+        statusCode: 409,
+        message: `Active loan exists (ID: ${existingLoan.id}). Complete all EMIs first.`,
       });
-    }
-    // check pending loan
-    const pendingLoan = await this.loanRepository.findOne({
-      where: { user: { id: user.id }, status: 'pending' },
-    });
-
-    if (pendingLoan) {
-      throw new BadRequestException({
+    if (existingLoan?.status === 'pending')
+      throw new ConflictException({
         success: false,
-        statusCode: 400,
-        message: `You have a pending loan (ID: ${pendingLoan.id}). Please finish it first.`,
+        statusCode: 409,
+        message: `Pending loan exists (ID: ${existingLoan.id}). Finish it first.`,
       });
-    }
-    //check default loan
-    const defaultedLoan = await this.loanRepository.findOne({
-      where: { user: { id: user.id }, status: 'defaulted' },
-    });
-    //        'Your previous loan was defaulted. You are not eligible for a new loan.',
-
-    if (defaultedLoan) {
-      throw new BadRequestException({
+    if (existingLoan?.status === 'defaulted')
+      throw new ForbiddenException({
         success: false,
-        statusCode: 400,
-        message:
-          'Your previous loan was defaulted. You are not eligible for a new loan.',
+        statusCode: 403,
+        message: 'Previous loan defaulted. Not eligible for new loan.',
       });
-    }
-    //If salary < 50k --> user eligible for 25% of salary only
-    let eligibleAmount: number;
-    if (salary < 50000) {
-      eligibleAmount = salary * 0.25;
-    } else {
-      eligibleAmount = requestedAmount;
-    }
 
-    const interestRate = eligibleAmount * this.INTEREST_RATE;
-    const total = eligibleAmount + interestRate;
-
+    const approvedAmount = salary < 50000 ? salary * 0.25 : requestedAmount;
+    const interestAmount = approvedAmount * this.INTEREST_RATE;
+    const totalPayable = approvedAmount + interestAmount;
     const emiCount = requestedAmount >= 50000 ? 4 : 3;
-    const emiAmount = parseFloat((total / emiCount).toFixed(2));
-    const totalRepayment = parseFloat(
-      (eligibleAmount + interestRate).toFixed(2),
-    );
-    const totalLoansTaken = await this.loanRepository.count({
+    const emiAmount = parseFloat((totalPayable / emiCount).toFixed(2));
+    const totalLoansTaken = await this.loanRepo.count({
       where: { user: { id: user.id } },
     });
 
-    const loan = this.loanRepository.create({
-      requestedAmount,
-      approvedAmount: eligibleAmount,
-      interestAmount: interestRate,
-      totalPayable: total,
-      emiCount,
-      emiAmount,
-      amountPaid: 0,
-      user,
-      status: 'active',
-      totalLoansTaken: totalLoansTaken + 1,
-    });
-
-    await this.loanRepository.save(loan);
+    const loan = await this.loanRepo.save(
+      this.loanRepo.create({
+        requestedAmount,
+        approvedAmount,
+        interestAmount,
+        totalPayable,
+        emiCount,
+        emiAmount,
+        amountPaid: 0,
+        user,
+        status: 'active',
+        totalLoansTaken: totalLoansTaken + 1,
+      }),
+    );
 
     return {
       success: true,
@@ -137,32 +118,32 @@ export class LoanService {
         mobile_no: user.mobile_no,
         salary,
         requestedAmount,
-        approvedAmount: eligibleAmount,
+        approvedAmount,
         interestRate: `${this.INTEREST_RATE * 100}%`,
-        totalInterest: interestRate,
-        totalPayable: total,
+        interestAmount,
+        totalPayable,
         emiCount,
         emiAmount,
-        totalRepayment,
         totalLoansTaken,
         status: 'active',
       },
     };
   }
-  async getLoanHistory(userId: number): Promise<any> {
-    const loans = await this.loanRepository.find({
+
+  // ─── LOAN HISTORY ─────────────────────────────────────────────
+  async getLoanHistory(userId: number) {
+    const loans = await this.loanRepo.find({
       where: { user: { id: userId } },
       relations: ['user'],
       order: { createdAt: 'ASC' },
     });
 
-    if (!loans || loans.length === 0) {
-      throw new BadRequestException({
+    if (!loans.length)
+      throw new NotFoundException({
         success: false,
-        statusCode: 400,
-        message: 'No loan history found for Use',
+        statusCode: 404,
+        message: 'No loan history found.',
       });
-    }
 
     return {
       success: true,
@@ -171,38 +152,44 @@ export class LoanService {
       data: {
         userId,
         totalLoans: loans.length,
-        loans: loans.map((loan) => ({
-          loanId: loan.id,
-          username: loan.user.username,
-          mobile_no: loan.user.mobile_no,
-          requestedAmount: loan.requestedAmount,
-          approvedAmount: loan.approvedAmount,
-          totalPayable: loan.totalPayable,
-          amountPaid: loan.amountPaid,
-          emiCount: loan.emiCount,
-          emiAmount: loan.emiAmount,
-          status: loan.status,
-          createdAt: loan.createdAt,
+        loans: loans.map((l) => ({
+          loanId: l.id,
+          username: l.user.username,
+          mobile_no: l.user.mobile_no,
+          requestedAmount: l.requestedAmount,
+          approvedAmount: l.approvedAmount,
+          totalPayable: l.totalPayable,
+          amountPaid: l.amountPaid,
+          emiCount: l.emiCount,
+          emiAmount: l.emiAmount,
+          status: l.status,
+          createdAt: l.createdAt,
         })),
       },
     };
   }
 
+  // ─── LOAN REPORT  (pagination + download) ────────────────────
   async getLoanReport(
+    res: Response,
     fromDate?: string,
     toDate?: string,
     status?: string,
     username?: string,
     mobile_no?: string,
-  ): Promise<any> {
-    //create dynamic query builder
-    const query = this.loanRepository
+    page: number = 1,
+    limit: number = 10,
+    showAll?: string,
+    download?: string,
+  ) {
+    const query = this.loanRepo
       .createQueryBuilder('loan')
       .leftJoinAndSelect('loan.user', 'user')
       .select([
         'loan.id',
         'loan.requestedAmount',
         'loan.approvedAmount',
+        'loan.interestAmount',
         'loan.totalPayable',
         'loan.amountPaid',
         'loan.emiCount',
@@ -214,118 +201,117 @@ export class LoanService {
         'user.mobile_no',
       ]);
 
-    //  filter by date range
-    if (fromDate) {
+    if (fromDate)
       query.andWhere('loan.createdAt >= :fromDate', {
         fromDate: new Date(fromDate),
       });
-    }
-
     if (toDate) {
       const to = new Date(toDate);
-      to.setHours(23, 59, 59, 999); // include full toDate day
+      to.setHours(23, 59, 59, 999);
       query.andWhere('loan.createdAt <= :toDate', { toDate: to });
     }
-
-    //  filter by status
-    if (status) {
-      query.andWhere('loan.status = :status', { status });
-    }
-
-    //filter by username
-    if (username) {
+    if (status) query.andWhere('loan.status = :status', { status });
+    if (username)
       query.andWhere('user.username ILIKE :username', {
-        username: `%${username}%`, // 👈 partial match
+        username: `%${username}%`,
       });
-    }
+    if (mobile_no) query.andWhere('user.mobile_no = :mobile_no', { mobile_no });
 
-    //filter by mobileNo
-    if (mobile_no) {
-      query.andWhere('user.mobile_no = :mobile_no', { mobile_no });
-    }
+    // total count before pagination
+    const totalCount = await query.getCount();
+
+    // apply pagination or show all
     query.orderBy('loan.createdAt', 'DESC');
+    if (showAll !== 'true') query.skip((page - 1) * limit).take(limit);
 
     const loans = await query.getMany();
 
-    if (!loans || loans.length === 0) {
-      throw new BadRequestException('No loans found for the given filters');
-    }
+    if (!loans.length)
+      throw new BadRequestException('No loans found for the given filters.');
 
-    const totalLoanAmount = loans.reduce(
-      (sum, l) => sum + Number(l.approvedAmount),
-      0,
-    );
-    const totalAmountPaid = loans.reduce(
-      (sum, l) => sum + Number(l.amountPaid),
-      0,
-    );
+    const totalPages = Math.ceil(totalCount / limit);
 
-    return {
+    const pagination =
+      showAll === 'true'
+        ? { totalRecords: totalCount, totalPages: 1, showAll: true }
+        : {
+            totalRecords: totalCount,
+            totalPages,
+            currentPage: page,
+            limit,
+            hasNextPage: page < totalPages,
+            hasPrevPage: page > 1,
+            showAll: false,
+          };
+
+    const loanList = loans.map((l) => ({
+      loanId: l.id,
+      username: l.user.username,
+      mobile_no: l.user.mobile_no,
+      requestedAmount: l.requestedAmount,
+      approvedAmount: l.approvedAmount,
+      interestAmount: l.interestAmount,
+      totalPayable: l.totalPayable,
+      amountPaid: l.amountPaid,
+      remainingBalance: Math.max(
+        parseFloat((Number(l.totalPayable) - Number(l.amountPaid)).toFixed(2)),
+        0,
+      ),
+      emiCount: l.emiCount,
+      emiAmount: l.emiAmount,
+      status: l.status,
+      createdAt: l.createdAt,
+    }));
+
+    const responseData = {
       success: true,
       statusCode: 200,
       message: 'Loan report fetched successfully.',
-      data: {
-        totalLoans: loans.length,
-        totalLoanAmount,
-        totalAmountPaid,
-        filters: {
-          fromDate: fromDate ?? 'N/A',
-          toDate: toDate ?? 'N/A',
-          status: status ?? 'all',
-          username: username ?? 'all',
-          mobile_no: mobile_no ?? 'all',
-        },
-        loans: loans.map((loan) => ({
-          loanId: loan.id,
-          username: loan.user.username,
-          mobile_no: loan.user.mobile_no,
-          requestedAmount: loan.requestedAmount,
-          approvedAmount: loan.approvedAmount,
-          totalPayable: loan.totalPayable,
-          amountPaid: loan.amountPaid,
-          emiCount: loan.emiCount,
-          emiAmount: loan.emiAmount,
-          status: loan.status,
-          createdAt: loan.createdAt,
-        })),
-      },
-      timestamp: new Date().toISOString(),
+      data: { pagination, totalLoans: loans.length, loans: loanList },
     };
+
+    if (download === 'csv') return this.downloadLoanCsv(loanList, res);
+    if (download === 'json') return this.downloadJson(responseData, res);
+
+    return responseData;
   }
 
-  async getLoanById(loanId: number): Promise<any> {
-    //fetch specific loan with user detail
-    const loan = await this.loanRepository
+  // ─── GET LOAN BY ID ───────────────────────────────────────────
+  async getLoanById(loanId: number) {
+    const loan = await this.loanRepo
       .createQueryBuilder('loan')
       .leftJoinAndSelect('loan.user', 'user')
       .select([
         'loan.id',
         'loan.requestedAmount',
         'loan.approvedAmount',
+        'loan.interestAmount',
         'loan.totalPayable',
         'loan.amountPaid',
         'loan.emiCount',
         'loan.emiAmount',
         'loan.status',
-        'loan.createdAt',
         'loan.totalLoansTaken',
+        'loan.createdAt',
         'user.id',
         'user.username',
         'user.mobile_no',
       ])
-      .where('loan.id = :loanId', { loanId: Number(loanId) })
+      .where('loan.id = :loanId', { loanId })
       .getOne();
 
-    if (!loan) {
-      throw new BadRequestException({
+    if (!loan)
+      throw new NotFoundException({
         success: false,
         statusCode: 404,
-        message: `Loan with ID ${loanId} not found.`,
+        message: `Loan ID ${loanId} not found.`,
       });
-    }
 
-    const remainingBalance = parseFloat(
-      (Number(loan.totalPayable) - Number(loan.amountPaid)).toFixed(2),
+    const remainingBalance = Math.max(
+      parseFloat(
+        (Number(loan.totalPayable) - Number(loan.amountPaid)).toFixed(2),
+      ),
+      0,
     );
 
     return {
@@ -338,9 +324,10 @@ export class LoanService {
         mobile_no: loan.user.mobile_no,
         requestedAmount: loan.requestedAmount,
         approvedAmount: loan.approvedAmount,
+        interestAmount: loan.interestAmount,
         totalPayable: loan.totalPayable,
         amountPaid: loan.amountPaid,
-        remainingBalance: remainingBalance > 0 ? remainingBalance : 0,
+        remainingBalance,
         emiCount: loan.emiCount,
         emiAmount: loan.emiAmount,
         status: loan.status,
@@ -348,5 +335,60 @@ export class LoanService {
         createdAt: loan.createdAt,
       },
     };
+  }
+
+  // ─── CSV DOWNLOAD ─────────────────────────────────────────────
+  private downloadLoanCsv(loans: any[], res: Response): void {
+    const headers = [
+      'Loan ID',
+      'Username',
+      'Mobile No',
+      'Requested Amount',
+      'Approved Amount',
+      'Interest Amount',
+      'Total Payable',
+      'Amount Paid',
+      'Remaining Balance',
+      'EMI Count',
+      'EMI Amount',
+      'Status',
+      'Created At',
+    ];
+
+    const rows = loans.map((l) =>
+      [
+        l.loanId,
+        l.username,
+        l.mobile_no,
+        l.requestedAmount,
+        l.approvedAmount,
+        l.interestAmount,
+        l.totalPayable,
+        l.amountPaid,
+        l.remainingBalance,
+        l.emiCount,
+        l.emiAmount,
+        l.status,
+        new Date(l.createdAt).toISOString().split('T')[0],
+      ].map(String),
+    );
+
+    const csv = [
+      headers.join(','),
+      ...rows.map((r) => r.map((c) => `"${c.replace(/"/g, '""')}"`).join(',')),
+    ].join('\n');
+
+    const filename = `loan-report-${new Date().toISOString().split('T')[0]}.csv`;
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(csv);
+  }
+
+  // ─── JSON DOWNLOAD ────────────────────────────────────────────
+  private downloadJson(data: any, res: Response): void {
+    const filename = `loan-report-${new Date().toISOString().split('T')[0]}.json`;
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(JSON.stringify(data, null, 2));
   }
 }

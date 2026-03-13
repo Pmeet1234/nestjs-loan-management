@@ -1,10 +1,17 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  ConflictException,
+  UnauthorizedException,
+  NotFoundException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
 import { RegisterDto } from './dto/register.dto';
 import { User } from '../user/entities/user.entity';
-import crypto from 'crypto';
+import * as crypto from 'crypto';
 
 @Injectable()
 export class AuthService {
@@ -17,7 +24,8 @@ export class AuthService {
   ) {}
 
   generateOtp(): number {
-    return 123456;
+    // return 123456;
+    return Math.floor(100000 + Math.random() * 900000);
   }
 
   async register(data: RegisterDto) {
@@ -29,15 +37,25 @@ export class AuthService {
     });
 
     if (user && user.password) {
-      throw new BadRequestException({
+      throw new ConflictException({
         success: false,
-        statusCode: 400,
+        statusCode: 409,
         message: 'Mobile number already registered',
       });
     }
 
-    const otp = this.generateOtp();
+    if (user && user.otp && user.otpExpiry && new Date() < user.otpExpiry) {
+      const remainingMs = user.otpExpiry.getTime() - new Date().getTime();
+      const remainingSeconds = Math.ceil(remainingMs / 1000);
 
+      throw new BadRequestException({
+        success: false,
+        statusCode: 400,
+        message: `OTP already sent. Please wait ${remainingSeconds} seconds before requesting a new one.`,
+      });
+    }
+
+    const otp = this.generateOtp();
     const otpExpiry = new Date();
     otpExpiry.setMinutes(otpExpiry.getMinutes() + 5);
 
@@ -61,7 +79,7 @@ export class AuthService {
     await this.userRepository.save(user);
 
     return {
-      sucess: true,
+      success: true,
       statuscode: 201,
       message:
         'OTP has been sent successfully to your registered mobile number.',
@@ -79,7 +97,7 @@ export class AuthService {
     });
 
     if (!user) {
-      throw new BadRequestException({
+      throw new NotFoundException({
         success: false,
         statusCode: 404,
         message: 'User not found',
@@ -103,9 +121,9 @@ export class AuthService {
     }
 
     if (user.otp !== parseInt(otp)) {
-      throw new BadRequestException({
+      throw new UnauthorizedException({
         success: false,
-        statusCode: 400,
+        statusCode: 401,
         message: 'Invalid OTP',
       });
     }
@@ -118,7 +136,7 @@ export class AuthService {
 
     return {
       success: true,
-      statusCode: 200,
+      statusCode: 201,
       message: 'OTP verified successfully.',
       data: {
         isVerified: true,
@@ -134,13 +152,9 @@ export class AuthService {
     const user = await this.userRepository.findOne({
       where: { mobile_no },
     });
-    const hashedPassword = crypto
-      .createHash('md5')
-      .update(create_password)
-      .digest('hex');
 
     if (!user) {
-      throw new BadRequestException({
+      throw new NotFoundException({
         success: false,
         statusCode: 404,
         message: 'User not found with the provided mobile number.',
@@ -148,11 +162,11 @@ export class AuthService {
     }
 
     if (!user.isVerified) {
-      throw new BadRequestException({
+      throw new ForbiddenException({
         success: false,
-        statusCode: 400,
+        statusCode: 403,
         message:
-          'MObile number is not verified. Please verify OTP before creating password.',
+          'Mobile number is not verified. Please verify OTP before creating password.',
       });
     }
 
@@ -163,6 +177,10 @@ export class AuthService {
         message: 'Password and confirm password do not match.',
       });
     }
+    const hashedPassword = crypto
+      .createHash('md5')
+      .update(create_password)
+      .digest('hex');
     user.password = hashedPassword;
 
     await this.userRepository.save(user);
@@ -188,7 +206,7 @@ export class AuthService {
       .digest('hex');
 
     if (!user || !user.password) {
-      throw new BadRequestException({
+      throw new UnauthorizedException({
         success: false,
         statusCode: 401,
         message: 'Invalid mobile number or password.',
@@ -196,7 +214,7 @@ export class AuthService {
     }
 
     if (hashedInputPassword !== user.password) {
-      throw new BadRequestException({
+      throw new UnauthorizedException({
         success: false,
         statusCode: 401,
         message: 'Invalid mobile number or password.',
@@ -209,11 +227,11 @@ export class AuthService {
     };
 
     const token = this.jwtService.sign(payload, {
-      expiresIn: '10m',
+      expiresIn: '1h',
     });
 
     return {
-      sucess: true,
+      success: true,
       statusCode: 200,
       message: 'Login successful',
       data: {
