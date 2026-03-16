@@ -32,7 +32,7 @@ export class ReportService {
       showAll,
     } = filters;
 
-    // ── Build loan query ─────────────────────────────────────────
+    // ── Build loan query
     const loanQuery = this.loanRepo
       .createQueryBuilder('loan')
       .leftJoinAndSelect('loan.user', 'user');
@@ -60,7 +60,7 @@ export class ReportService {
     const totalCount = await loanQuery.getCount();
 
     // Apply pagination or return all
-    loanQuery.orderBy('loan.createdAt', 'DESC');
+    loanQuery.orderBy('loan.createdAt', 'DESC').addOrderBy('loan.id', 'ASC');
     if (showAll !== 'true') loanQuery.skip((page - 1) * limit).take(limit);
 
     const loans = await loanQuery.getMany();
@@ -72,7 +72,7 @@ export class ReportService {
         message: 'No data found for the given filters.',
       });
 
-    // ── Fetch EMIs for matched loans ─────────────────────────────
+    // ── Fetch EMIs for matched loans
     const loanIds = loans.map((l) => l.id);
 
     let emiQuery = this.emiRepo
@@ -85,7 +85,7 @@ export class ReportService {
 
     const allEmis = await emiQuery.getMany();
 
-    // ── Group EMIs by loanId ─────────────────────────────────────
+    // ── Group EMIs by loanId
     const emiByLoan = new Map<number, EmiPayment[]>();
     for (const emi of allEmis) {
       if (!emiByLoan.has(emi.loanId)) emiByLoan.set(emi.loanId, []);
@@ -104,7 +104,7 @@ export class ReportService {
         });
     }
 
-    // ── Build user map grouped by userId ─────────────────────────
+    // ── Build user map grouped by userId
     const userMap = new Map<number, { userInfo: any; loans: any[] }>();
 
     for (const loan of filteredLoans) {
@@ -168,7 +168,7 @@ export class ReportService {
       userMap.get(uid)!.loans.push(loanEntry);
     }
 
-    // ── Build result with per-user summary ───────────────────────
+    // ── Build result with per-user summary
     const users = Array.from(userMap.values()).map(({ userInfo, loans }) => ({
       ...userInfo,
       summary: {
@@ -198,9 +198,9 @@ export class ReportService {
             totalPages,
             currentPage: page,
             limit,
-            hasNextPage: page < totalPages,
-            hasPrevPage: page > 1,
-            showAll: false,
+            // hasNextPage: page < totalPages,
+            // hasPrevPage: page > 1,
+            // showAll: false,
           };
 
     const responseData = {
@@ -216,7 +216,7 @@ export class ReportService {
 
     return responseData;
   }
-  // ─── builds and sends CSV file ────────────────────────────────
+  // ─── builds and sends CSV file
   private downloadCsv(users: any[], res: Response): void {
     // these are the column names in the CSV file
     const headers = [
@@ -335,7 +335,7 @@ export class ReportService {
     res.send(csv);
   }
 
-  // ─── sends JSON file as download ──────────────────────────────
+  // ─── sends JSON file as download
   private downloadJson(data: any, res: Response): void {
     const filename = `loan-report-${new Date().toISOString().split('T')[0]}.json`;
     res.setHeader('Content-Type', 'application/json');
