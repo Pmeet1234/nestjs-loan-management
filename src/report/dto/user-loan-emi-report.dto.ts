@@ -3,46 +3,34 @@ import {
   IsString,
   IsNumber,
   IsDateString,
+  IsIn,
   Min,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class UserLoanEmiReportDto {
+  // ─── Search ────────────────────────────────────────────────────
+  @IsOptional()
+  @IsString()
+  search?: string; // searches username, mobile_no, loanId, userId, status
+
+  // ─── EMI Date Filter ───────────────────────────────────────────
   @IsOptional()
   @IsDateString()
-  startDate?: string;
+  startDate?: string; // emi dueDate from
 
   @IsOptional()
   @IsDateString()
-  endDate?: string;
+  endDate?: string; // emi dueDate to
 
-  @IsOptional()
-  @IsString()
-  username?: string;
-
-  @IsOptional()
-  @IsString()
-  mobile_no?: string;
-
+  // ─── EMI Number Filter ─────────────────────────────────────────
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
-  userId?: number;
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  loanId?: number;
-
-  @IsOptional()
-  @IsString()
-  status?: string;
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
+  @Min(1)
   emiNumber?: number;
 
+  // ─── Pagination ────────────────────────────────────────────────
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
@@ -55,11 +43,12 @@ export class UserLoanEmiReportDto {
   @Min(1)
   limit?: number = 10;
 
+  // ─── Flags ─────────────────────────────────────────────────────
   @IsOptional()
-  @IsString()
+  @IsIn(['true', 'false'])
   showAll?: string;
 
   @IsOptional()
-  @IsString()
-  download?: string; // ?download=csv  or  ?download=json
+  @IsIn(['csv', 'json'])
+  download?: string;
 }
