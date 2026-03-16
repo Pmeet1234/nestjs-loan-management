@@ -7,9 +7,11 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { Response } from 'express';
 import { EmiPayment } from '../emi/entities/emi-payment.entity';
 import { Loan } from '../loan/entities/loan.entity';
 import { PayEmiDto } from 'src/auth/dto/pay_emi.dto';
+import { EmiHistoryQueryDto } from './dto/emi-history-query.dto';
 
 @Injectable()
 export class EmiService {
@@ -18,6 +20,7 @@ export class EmiService {
     @InjectRepository(Loan) private loanRepo: Repository<Loan>,
   ) {}
 
+  // ─── PAY EMI
   async payEmi(dto: PayEmiDto) {
     const loan = await this.loanRepo.findOne({
       where: { id: dto.loanId },
@@ -42,7 +45,6 @@ export class EmiService {
         statusCode: 403,
         message: 'Loan defaulted. Not eligible.',
       });
-
     if (dto.amount < Number(loan.emiAmount))
       throw new BadRequestException({
         success: false,
@@ -52,7 +54,6 @@ export class EmiService {
 
     const loanCreatedAt = new Date(loan.createdAt);
 
-    // Check if loan duration has ended → auto default
     if (dto.isLoanDefaulted(loanCreatedAt, loan.emiCount)) {
       loan.status = 'defaulted';
       loan.user.hasAppliedLoan = false;
@@ -85,7 +86,6 @@ export class EmiService {
       : 0;
     const totalPaid = dto.calculateTotalPaid(penaltyAmount);
     const totalPayable = Number(loan.totalPayable);
-
     const totalAmountPaidSoFar = paidEmis.reduce(
       (sum, e) => sum + Number(e.totalPaid),
       0,
@@ -163,6 +163,7 @@ export class EmiService {
     };
   }
 
+  // ─── GET EMI STATUS
   async getEmiStatus(loanId: number) {
     const loan = await this.loanRepo.findOne({
       where: { id: loanId },
@@ -195,7 +196,6 @@ export class EmiService {
     );
     const remainingEmis = loan.emiCount - paidCount;
 
-    // Auto default if loan duration ended
     if (today > loanEndDate && loan.status !== 'completed') {
       loan.status = 'defaulted';
       loan.user.hasAppliedLoan = false;
@@ -236,29 +236,96 @@ export class EmiService {
     };
   }
 
-  async getEmiHistory(loanId: number) {
-    const emis = await this.emiRepo.find({
-      where: { loanId },
-      order: { emiNumber: 'ASC' },
-    });
+  // ─── GET EMI HISTORY (pagination + download)
+  async getEmiHistory(query: EmiHistoryQueryDto, res: Response) {
+    const { loanId, page, limit, showAll, download } = query;
 
-    if (!emis.length)
+    const qb = this.emiRepo
+      .createQueryBuilder('emi')
+      .where('emi.loanId = :loanId', { loanId })
+      .orderBy('emi.emiNumber', 'ASC');
+
+    const totalCount = await qb.getCount();
+
+    if (!totalCount)
       throw new NotFoundException({
         success: false,
         statusCode: 404,
         message: 'No EMI history found.',
       });
 
+    if (showAll !== 'true') qb.skip((page - 1) * limit).take(limit);
+
+    const emis = await qb.getMany();
+
     const totalAmountPaid = emis.reduce(
       (sum, e) => sum + Number(e.totalPaid),
       0,
     );
+    const totalPages = Math.ceil(totalCount / limit);
 
-    return {
+    const pagination =
+      showAll === 'true'
+        ? { totalRecords: totalCount, totalPages: 1, showAll: true }
+        : { totalRecords: totalCount, totalPages, currentPage: page, limit };
+
+    const responseData = {
       success: true,
       statusCode: 200,
       message: 'EMI history fetched successfully.',
-      data: { loanId, totalEmis: emis.length, totalAmountPaid, emis },
+      data: { loanId, pagination, totalAmountPaid, emis },
     };
+
+    if (download === 'csv') return this.downloadCsv(loanId, emis, res);
+    if (download === 'json') return this.downloadJson(responseData, res);
+
+    return responseData;
+  }
+
+  // ─── PRIVATE: CSV DOWNLOAD
+  private downloadCsv(loanId: number, emis: EmiPayment[], res: Response): void {
+    const headers = [
+      'EMI ID',
+      'Loan ID',
+      'EMI Number',
+      'EMI Amount',
+      'Penalty Amount',
+      'Total Paid',
+      'Due Date',
+      'Paid Date',
+      'Status',
+    ];
+
+    const rows = emis.map((e) =>
+      [
+        e.id,
+        loanId,
+        e.emiNumber,
+        e.emiAmount,
+        e.penaltyAmount,
+        e.totalPaid,
+        new Date(e.dueDate).toISOString().split('T')[0],
+        e.paidDate ? new Date(e.paidDate).toISOString().split('T')[0] : '',
+        e.status,
+      ].map(String),
+    );
+
+    const csv = [
+      headers.join(','),
+      ...rows.map((r) => r.map((c) => `"${c.replace(/"/g, '""')}"`).join(',')),
+    ].join('\n');
+
+    const filename = `emi-history-loan-${loanId}-${new Date().toISOString().split('T')[0]}.csv`;
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(csv);
+  }
+
+  // ─── PRIVATE: JSON DOWNLOAD
+  private downloadJson(data: any, res: Response): void {
+    const filename = `emi-history-${new Date().toISOString().split('T')[0]}.json`;
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(JSON.stringify(data, null, 2));
   }
 }
