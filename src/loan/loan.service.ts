@@ -22,7 +22,7 @@ export class LoanService {
     @InjectRepository(User) private userRepo: Repository<User>,
   ) {}
 
-  //  APPLY LOAN
+  // ─── APPLY LOAN ───────────────────────────────────────────────
   async applyLoan(mobile_no: string, requestedAmount: number) {
     const user = await this.userRepo.findOne({
       where: { mobile_no },
@@ -100,12 +100,12 @@ export class LoanService {
     };
   }
 
-  //  LOAN HISTORY
+  // ─── LOAN HISTORY ─────────────────────────────────────────────
   async getLoanHistory(userId: number) {
     const loans = await this.loanRepo.find({
       where: { user: { id: userId } },
       relations: ['user'],
-      order: { createdAt: 'ASC' },
+      order: { id: 'ASC' },
     });
 
     if (!loans.length)
@@ -139,7 +139,7 @@ export class LoanService {
     };
   }
 
-  //LOAN REPORT  (pagination + download)
+  // ─── LOAN REPORT (pagination + download) ─────────────────────
   async getLoanReport(res: Response, query: LoanReportQueryDto) {
     const {
       fromDate,
@@ -190,13 +190,17 @@ export class LoanService {
 
     const totalCount = await qb.getCount();
 
-    qb.orderBy('loan.createdAt', 'DESC').addOrderBy('loan.id', 'ASC');
+    qb.orderBy('loan.id', 'ASC');
     if (showAll !== 'true') qb.skip((page - 1) * limit).take(limit);
 
     const loans = await qb.getMany();
 
     if (!loans.length)
-      throw new BadRequestException('No loans found for the given filters.');
+      throw new BadRequestException({
+        success: false,
+        statusCode: 400,
+        message: 'No loans found for the given filters.',
+      });
 
     const loanList = loans.map((l) => ({
       loanId: l.id,
@@ -207,10 +211,7 @@ export class LoanService {
       interestAmount: l.interestAmount,
       totalPayable: l.totalPayable,
       amountPaid: l.amountPaid,
-      remainingBalance: Math.max(
-        parseFloat((Number(l.totalPayable) - Number(l.amountPaid)).toFixed(2)),
-        0,
-      ),
+      remainingBalance: this.calcRemainingBalance(l.totalPayable, l.amountPaid),
       emiCount: l.emiCount,
       emiAmount: l.emiAmount,
       status: l.status,
@@ -221,15 +222,7 @@ export class LoanService {
     const pagination =
       showAll === 'true'
         ? { totalRecords: totalCount, totalPages: 1, showAll: true }
-        : {
-            totalRecords: totalCount,
-            totalPages,
-            currentPage: page,
-            limit,
-            // hasNextPage: page < totalPages,
-            // hasPrevPage: page > 1,
-            // showAll: false,
-          };
+        : { totalRecords: totalCount, totalPages, currentPage: page, limit };
 
     const responseData = {
       success: true,
@@ -244,7 +237,7 @@ export class LoanService {
     return responseData;
   }
 
-  //  GET LOAN BY ID
+  // ─── GET LOAN BY ID ───────────────────────────────────────────
   async getLoanById(loanId: number) {
     const loan = await this.loanRepo
       .createQueryBuilder('loan')
@@ -275,13 +268,6 @@ export class LoanService {
         message: `Loan ID ${loanId} not found.`,
       });
 
-    const remainingBalance = Math.max(
-      parseFloat(
-        (Number(loan.totalPayable) - Number(loan.amountPaid)).toFixed(2),
-      ),
-      0,
-    );
-
     return {
       success: true,
       statusCode: 200,
@@ -295,7 +281,10 @@ export class LoanService {
         interestAmount: loan.interestAmount,
         totalPayable: loan.totalPayable,
         amountPaid: loan.amountPaid,
-        remainingBalance,
+        remainingBalance: this.calcRemainingBalance(
+          loan.totalPayable,
+          loan.amountPaid,
+        ),
         emiCount: loan.emiCount,
         emiAmount: loan.emiAmount,
         status: loan.status,
@@ -305,7 +294,7 @@ export class LoanService {
     };
   }
 
-  // ─── PRIVATE: CHECK EXISTING LOAN
+  // ─── PRIVATE: CHECK EXISTING LOAN ────────────────────────────
   private async checkExistingLoan(userId: number): Promise<void> {
     const existing = await this.loanRepo.findOne({
       where: [
@@ -337,7 +326,18 @@ export class LoanService {
       });
   }
 
-  //  PRIVATE: CSV DOWNLOAD
+  // ─── PRIVATE: CALC REMAINING BALANCE ─────────────────────────
+  private calcRemainingBalance(
+    totalPayable: number,
+    amountPaid: number,
+  ): number {
+    return Math.max(
+      parseFloat((Number(totalPayable) - Number(amountPaid)).toFixed(2)),
+      0,
+    );
+  }
+
+  // ─── PRIVATE: CSV DOWNLOAD ────────────────────────────────────
   private downloadLoanCsv(loans: any[], res: Response): void {
     const headers = [
       'Loan ID',
@@ -384,7 +384,7 @@ export class LoanService {
     res.send(csv);
   }
 
-  //  PRIVATE: JSON DOWNLOAD
+  // ─── PRIVATE: JSON DOWNLOAD ───────────────────────────────────
   private downloadJson(data: any, res: Response): void {
     const filename = `loan-report-${new Date().toISOString().split('T')[0]}.json`;
     res.setHeader('Content-Type', 'application/json');

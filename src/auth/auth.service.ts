@@ -9,45 +9,41 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
+import * as crypto from 'crypto';
 import { RegisterDto } from './dto/register.dto';
 import { User } from '../user/entities/user.entity';
-import * as crypto from 'crypto';
 
 @Injectable()
 export class AuthService {
+  private readonly OTP_EXPIRY_MINUTES = 5;
+  private readonly JWT_EXPIRY = '1h';
+
   constructor(
-    // Inject User table repository to perform DB operations
-    @InjectRepository(User)
-    private userRepository: Repository<User>,
-    //jwt service to generate token
+    @InjectRepository(User) private userRepo: Repository<User>,
     private jwtService: JwtService,
   ) {}
 
-  generateOtp(): number {
-    // return 123456;
-    return Math.floor(100000 + Math.random() * 900000);
-  }
+  // ─── REGISTER
+  async register(dto: RegisterDto) {
+    const { username, mobile_no } = dto;
 
-  async register(data: RegisterDto) {
-    const { username, mobile_no } = data;
+    const existingUser = await this.userRepo.findOne({ where: { mobile_no } });
 
-    // Check if user already exists
-    let user = await this.userRepository.findOne({
-      where: { mobile_no },
-    });
-
-    if (user && user.password) {
+    if (existingUser?.password)
       throw new ConflictException({
         success: false,
         statusCode: 409,
-        message: 'Mobile number already registered',
+        message: 'Mobile number already registered.',
       });
-    }
 
-    if (user && user.otp && user.otpExpiry && new Date() < user.otpExpiry) {
-      const remainingMs = user.otpExpiry.getTime() - new Date().getTime();
-      const remainingSeconds = Math.ceil(remainingMs / 1000);
-
+    if (
+      existingUser?.otp &&
+      existingUser?.otpExpiry &&
+      new Date() < existingUser.otpExpiry
+    ) {
+      const remainingSeconds = Math.ceil(
+        (existingUser.otpExpiry.getTime() - Date.now()) / 1000,
+      );
       throw new BadRequestException({
         success: false,
         statusCode: 400,
@@ -56,184 +52,135 @@ export class AuthService {
     }
 
     const otp = this.generateOtp();
-    const otpExpiry = new Date();
-    otpExpiry.setMinutes(otpExpiry.getMinutes() + 5);
+    const otpExpiry = this.getOtpExpiry();
 
-    if (user) {
-      //if user exists but not completed registration->update details
-      user.username = username;
-      user.otp = otp;
-      user.otpExpiry = otpExpiry;
-      user.isVerified = false;
+    if (existingUser) {
+      // User exists but registration incomplete — update details
+      existingUser.username = username;
+      existingUser.otp = otp;
+      existingUser.otpExpiry = otpExpiry;
+      existingUser.isVerified = false;
+      await this.userRepo.save(existingUser);
     } else {
-      //create new user if not exist
-      user = this.userRepository.create({
-        username,
-        mobile_no,
-        otp,
-        otpExpiry,
-        isVerified: false,
-      });
+      // Fresh registration
+      await this.userRepo.save(
+        this.userRepo.create({
+          username,
+          mobile_no,
+          otp,
+          otpExpiry,
+          isVerified: false,
+        }),
+      );
     }
-    //save user in db
-    await this.userRepository.save(user);
-
-    return {
-      success: true,
-      statuscode: 201,
-      message:
-        'OTP has been sent successfully to your registered mobile number.',
-      data: {
-        mobile_no,
-        otp,
-        expiresAt: otpExpiry,
-      },
-    };
-  }
-
-  async verifyOtp(mobile_no: string, otp: string) {
-    const user = await this.userRepository.findOne({
-      where: { mobile_no },
-    });
-
-    if (!user) {
-      throw new NotFoundException({
-        success: false,
-        statusCode: 404,
-        message: 'User not found',
-      });
-    }
-
-    if (!user.otp || !user.otpExpiry) {
-      throw new BadRequestException({
-        success: false,
-        statusCode: 400,
-        message: 'OTP not found',
-      });
-    }
-
-    if (new Date() > user.otpExpiry) {
-      throw new BadRequestException({
-        success: false,
-        statusCode: 400,
-        message: 'OTP expired',
-      });
-    }
-
-    if (user.otp !== parseInt(otp)) {
-      throw new UnauthorizedException({
-        success: false,
-        statusCode: 401,
-        message: 'Invalid OTP',
-      });
-    }
-
-    user.isVerified = true;
-    user.otp = null;
-    user.otpExpiry = null;
-
-    await this.userRepository.save(user);
 
     return {
       success: true,
       statusCode: 201,
-      message: 'OTP verified successfully.',
-      data: {
-        isVerified: true,
-      },
+      message: 'OTP sent successfully to your registered mobile number.',
+      data: { mobile_no, otp, expiresAt: otpExpiry },
     };
   }
 
+  // ─── VERIFY OTP
+  async verifyOtp(mobile_no: string, otp: string) {
+    const user = await this.findUserOrFail(mobile_no);
+
+    if (!user.otp || !user.otpExpiry)
+      throw new BadRequestException({
+        success: false,
+        statusCode: 400,
+        message: 'OTP not found.',
+      });
+
+    if (new Date() > user.otpExpiry)
+      throw new BadRequestException({
+        success: false,
+        statusCode: 400,
+        message: 'OTP has expired.',
+      });
+
+    if (user.otp !== parseInt(otp))
+      throw new UnauthorizedException({
+        success: false,
+        statusCode: 401,
+        message: 'Invalid OTP.',
+      });
+
+    user.isVerified = true;
+    user.otp = null;
+    user.otpExpiry = null;
+    await this.userRepo.save(user);
+
+    return {
+      success: true,
+      statusCode: 200,
+      message: 'OTP verified successfully.',
+      data: { isVerified: true },
+    };
+  }
+
+  // ─── CREATE PASSWORD
   async createPassword(
     mobile_no: string,
     create_password: string,
     confirm_password: string,
   ) {
-    const user = await this.userRepository.findOne({
-      where: { mobile_no },
-    });
+    const user = await this.findUserOrFail(mobile_no);
 
-    if (!user) {
-      throw new NotFoundException({
-        success: false,
-        statusCode: 404,
-        message: 'User not found with the provided mobile number.',
-      });
-    }
-
-    if (!user.isVerified) {
+    if (!user.isVerified)
       throw new ForbiddenException({
         success: false,
         statusCode: 403,
         message:
-          'Mobile number is not verified. Please verify OTP before creating password.',
+          'Mobile number not verified. Please verify OTP before creating a password.',
       });
-    }
 
-    if (create_password !== confirm_password) {
+    if (create_password !== confirm_password)
       throw new BadRequestException({
         success: false,
         statusCode: 400,
         message: 'Password and confirm password do not match.',
       });
-    }
-    const hashedPassword = crypto
+
+    user.password = crypto
       .createHash('md5')
       .update(create_password)
       .digest('hex');
-    user.password = hashedPassword;
-
-    await this.userRepository.save(user);
+    await this.userRepo.save(user);
 
     return {
       success: true,
       statusCode: 201,
       message: 'Password created successfully.',
-      data: {
-        mobile_no: user.mobile_no,
-        passwordCreated: true,
-      },
+      data: { mobile_no: user.mobile_no, passwordCreated: true },
     };
   }
 
+  // ─── LOGIN
   async login(mobile_no: string, password: string) {
-    const user = await this.userRepository.findOne({
-      where: { mobile_no },
+    const user = await this.userRepo.findOne({ where: { mobile_no } });
+
+    const invalidCredentials = new UnauthorizedException({
+      success: false,
+      statusCode: 401,
+      message: 'Invalid mobile number or password.',
     });
-    const hashedInputPassword = crypto
-      .createHash('md5')
-      .update(password)
-      .digest('hex');
 
-    if (!user || !user.password) {
-      throw new UnauthorizedException({
-        success: false,
-        statusCode: 401,
-        message: 'Invalid mobile number or password.',
-      });
-    }
+    if (!user?.password) throw invalidCredentials;
 
-    if (hashedInputPassword !== user.password) {
-      throw new UnauthorizedException({
-        success: false,
-        statusCode: 401,
-        message: 'Invalid mobile number or password.',
-      });
-    }
-    const payload = {
-      id: user.id,
-      mobile_no: user.mobile_no,
-      username: user.username,
-    };
+    const hashedInput = crypto.createHash('md5').update(password).digest('hex');
+    if (hashedInput !== user.password) throw invalidCredentials;
 
-    const token = this.jwtService.sign(payload, {
-      expiresIn: '1h',
-    });
+    const token = this.jwtService.sign(
+      { id: user.id, mobile_no: user.mobile_no, username: user.username },
+      { expiresIn: this.JWT_EXPIRY },
+    );
 
     return {
       success: true,
       statusCode: 200,
-      message: 'Login successful',
+      message: 'Login successful.',
       data: {
         access_token: token,
         user: {
@@ -243,5 +190,27 @@ export class AuthService {
         },
       },
     };
+  }
+
+  // ─── PRIVATE HELPERS ──────────────────────────────────────────
+  private generateOtp(): number {
+    return Math.floor(100000 + Math.random() * 900000);
+  }
+
+  private getOtpExpiry(): Date {
+    const expiry = new Date();
+    expiry.setMinutes(expiry.getMinutes() + this.OTP_EXPIRY_MINUTES);
+    return expiry;
+  }
+
+  private async findUserOrFail(mobile_no: string): Promise<User> {
+    const user = await this.userRepo.findOne({ where: { mobile_no } });
+    if (!user)
+      throw new NotFoundException({
+        success: false,
+        statusCode: 404,
+        message: 'User not found.',
+      });
+    return user;
   }
 }

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import {
   Injectable,
   BadRequestException,
@@ -20,45 +21,35 @@ export class EmiService {
     @InjectRepository(Loan) private loanRepo: Repository<Loan>,
   ) {}
 
-  // ─── PAY EMI
+  // ─── PAY EMI ──────────────────────────────────────────────────
   async payEmi(dto: PayEmiDto) {
-    const loan = await this.loanRepo.findOne({
-      where: { id: dto.loanId },
-      relations: ['user'],
-    });
+    const loan = await this.findLoanOrFail(dto.loanId);
 
-    if (!loan)
-      throw new NotFoundException({
-        success: false,
-        statusCode: 404,
-        message: 'Loan not found.',
-      });
     if (loan.status === 'completed')
       throw new ConflictException({
         success: false,
         statusCode: 409,
         message: 'Loan already completed.',
       });
+
     if (loan.status === 'defaulted')
       throw new ForbiddenException({
         success: false,
         statusCode: 403,
         message: 'Loan defaulted. Not eligible.',
       });
+
     if (dto.amount < Number(loan.emiAmount))
       throw new BadRequestException({
         success: false,
         statusCode: 400,
-        message: `Minimum EMI amount is ₹${loan.emiAmount}`,
+        message: `Minimum EMI amount is ₹${loan.emiAmount}.`,
       });
 
     const loanCreatedAt = new Date(loan.createdAt);
 
     if (dto.isLoanDefaulted(loanCreatedAt, loan.emiCount)) {
-      loan.status = 'defaulted';
-      loan.user.hasAppliedLoan = false;
-      await this.loanRepo.manager.save(loan.user);
-      await this.loanRepo.save(loan);
+      await this.markLoanDefaulted(loan);
       throw new ConflictException({
         success: false,
         statusCode: 409,
@@ -67,9 +58,7 @@ export class EmiService {
     }
 
     const paidEmis = await this.emiRepo.find({ where: { loanId: dto.loanId } });
-    const paidCount = paidEmis.filter(
-      (e) => e.status === 'paid' || e.status === 'delayed',
-    ).length;
+    const paidCount = this.countPaidEmis(paidEmis);
 
     if (paidCount >= loan.emiCount)
       throw new ConflictException({
@@ -101,11 +90,11 @@ export class EmiService {
         message: `Payment ₹${totalPaid} exceeds remaining balance ₹${remainingBalance}.`,
       });
 
+    const emiStatus = isDelayed ? 'delayed' : 'paid';
     const newTotalAmountPaid = dto.calculateNewTotalPaid(
       totalAmountPaidSoFar,
       totalPaid,
     );
-    const emiStatus = isDelayed ? 'delayed' : 'paid';
 
     await this.emiRepo.save(
       this.emiRepo.create({
@@ -163,24 +152,12 @@ export class EmiService {
     };
   }
 
-  // ─── GET EMI STATUS
+  // ─── GET EMI STATUS ───────────────────────────────────────────
   async getEmiStatus(loanId: number) {
-    const loan = await this.loanRepo.findOne({
-      where: { id: loanId },
-      relations: ['user'],
-    });
-
-    if (!loan)
-      throw new NotFoundException({
-        success: false,
-        statusCode: 404,
-        message: 'Loan not found.',
-      });
+    const loan = await this.findLoanOrFail(loanId);
 
     const emis = await this.emiRepo.find({ where: { loanId } });
-    const paidCount = emis.filter(
-      (e) => e.status === 'paid' || e.status === 'delayed',
-    ).length;
+    const paidCount = this.countPaidEmis(emis);
     const loanCreatedAt = new Date(loan.createdAt);
     const today = new Date();
 
@@ -196,12 +173,8 @@ export class EmiService {
     );
     const remainingEmis = loan.emiCount - paidCount;
 
-    if (today > loanEndDate && loan.status !== 'completed') {
-      loan.status = 'defaulted';
-      loan.user.hasAppliedLoan = false;
-      await this.loanRepo.manager.save(loan.user);
-      await this.loanRepo.save(loan);
-    }
+    if (today > loanEndDate && loan.status !== 'completed')
+      await this.markLoanDefaulted(loan);
 
     const totalAmountPaid = emis.reduce(
       (sum, e) => sum + Number(e.totalPaid),
@@ -236,7 +209,7 @@ export class EmiService {
     };
   }
 
-  // ─── GET EMI HISTORY (pagination + download)
+  // ─── GET EMI HISTORY (pagination + download) ──────────────────
   async getEmiHistory(query: EmiHistoryQueryDto, res: Response) {
     const { loanId, page, limit, showAll, download } = query;
 
@@ -257,7 +230,6 @@ export class EmiService {
     if (showAll !== 'true') qb.skip((page - 1) * limit).take(limit);
 
     const emis = await qb.getMany();
-
     const totalAmountPaid = emis.reduce(
       (sum, e) => sum + Number(e.totalPaid),
       0,
@@ -282,7 +254,34 @@ export class EmiService {
     return responseData;
   }
 
-  // ─── PRIVATE: CSV DOWNLOAD
+  // ─── PRIVATE HELPERS ──────────────────────────────────────────
+  private async findLoanOrFail(loanId: number) {
+    const loan = await this.loanRepo.findOne({
+      where: { id: loanId },
+      relations: ['user'],
+    });
+    if (!loan)
+      throw new NotFoundException({
+        success: false,
+        statusCode: 404,
+        message: 'Loan not found.',
+      });
+    return loan;
+  }
+
+  private countPaidEmis(emis: EmiPayment[]): number {
+    return emis.filter((e) => e.status === 'paid' || e.status === 'delayed')
+      .length;
+  }
+
+  private async markLoanDefaulted(loan: any): Promise<void> {
+    loan.status = 'defaulted';
+    loan.user.hasAppliedLoan = false;
+    await this.loanRepo.manager.save(loan.user);
+    await this.loanRepo.save(loan);
+  }
+
+  // ─── PRIVATE: CSV DOWNLOAD ────────────────────────────────────
   private downloadCsv(loanId: number, emis: EmiPayment[], res: Response): void {
     const headers = [
       'EMI ID',
@@ -321,7 +320,7 @@ export class EmiService {
     res.send(csv);
   }
 
-  // ─── PRIVATE: JSON DOWNLOAD
+  // ─── PRIVATE: JSON DOWNLOAD ───────────────────────────────────
   private downloadJson(data: any, res: Response): void {
     const filename = `emi-history-${new Date().toISOString().split('T')[0]}.json`;
     res.setHeader('Content-Type', 'application/json');
