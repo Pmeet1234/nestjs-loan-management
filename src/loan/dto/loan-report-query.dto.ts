@@ -1,47 +1,42 @@
 import {
   IsOptional,
   IsString,
-  IsIn,
-  // IsNumberString,
   IsDateString,
-  Matches,
+  IsIn,
+  IsNumber,
+  Min,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { IsNumber, Min } from 'class-validator';
 
 export class LoanReportQueryDto {
-  @IsOptional()
-  @IsDateString()
-  fromDate?: string;
-
-  @IsOptional()
-  @IsDateString()
-  toDate?: string;
-
-  @IsOptional()
-  @IsIn(['active', 'pending', 'defaulted', 'closed'])
-  status?: string;
-
+  // ─── Search ────────────────────────────────────────────────────
   @IsOptional()
   @IsString()
-  username?: string;
+  search?: string; // searches userId, loanId, status, username, mobile_no
+
+  // ─── Loan Date Filter ──────────────────────────────────────────
+  @IsOptional()
+  @IsDateString()
+  fromDate?: string; // loan createdAt from
 
   @IsOptional()
-  @Matches(/^\d{10}$/, { message: 'mobile_no must be a 10-digit number' })
-  mobile_no?: string;
+  @IsDateString()
+  toDate?: string; // loan createdAt to
+
+  // ─── Pagination ────────────────────────────────────────────────
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  page?: number = 1;
 
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
   @Min(1)
-  page: number = 1;
+  limit?: number = 10;
 
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  @Min(1)
-  limit: number = 10;
-
+  // ─── Flags ─────────────────────────────────────────────────────
   @IsOptional()
   @IsIn(['true', 'false'])
   showAll?: string;

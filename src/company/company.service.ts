@@ -24,8 +24,6 @@ export class CompanyService {
 
     if (!user)
       throw new NotFoundException({
-        success: false,
-        statusCode: 404,
         message: 'User not found with the provided mobile number.',
       });
 
@@ -37,12 +35,10 @@ export class CompanyService {
     await this.userRepo.save(user);
 
     return {
-      success: true,
-      statusCode: 201,
       message: 'Company details added successfully.',
       data: {
         company_name,
-        salary,
+        salary: `₹${salary}`,
         employmentStatus: 'approved',
       },
     };

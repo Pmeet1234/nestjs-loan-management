@@ -35,8 +35,6 @@ export class AdminService {
 
     if (existingAdmin) {
       throw new ConflictException({
-        success: false,
-        statusCode: 409,
         message: 'Email already exists.',
       });
     }
@@ -58,8 +56,6 @@ export class AdminService {
     }
 
     return {
-      success: true,
-      statusCode: 201,
       message: 'Admin registered successfully.',
       data: {
         email: admin.email,
@@ -76,8 +72,6 @@ export class AdminService {
     const hashedPassword = this.hashPassword(password);
     if (!admin || admin.password !== hashedPassword) {
       throw new UnauthorizedException({
-        success: false,
-        statusCode: 401,
         message: 'Invalid credentials.',
       });
     }
@@ -87,8 +81,6 @@ export class AdminService {
     });
 
     return {
-      success: true,
-      statusCode: 201,
       message: 'Admin login successful.',
       data: {
         access_token: token,
@@ -104,8 +96,6 @@ export class AdminService {
 
     if (!user) {
       throw new NotFoundException({
-        success: false,
-        statusCode: 404,
         message: 'User not found.',
       });
     }
@@ -114,8 +104,6 @@ export class AdminService {
     await this.userRepository.save(user);
 
     return {
-      success: true,
-      statusCode: 201,
       message: 'Employment approved successfully.',
       data: {
         mobile_no: user.mobile_no,

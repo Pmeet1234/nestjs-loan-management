@@ -31,8 +31,6 @@ export class AuthService {
 
     if (existingUser?.password)
       throw new ConflictException({
-        success: false,
-        statusCode: 409,
         message: 'Mobile number already registered.',
       });
 
@@ -45,8 +43,6 @@ export class AuthService {
         (existingUser.otpExpiry.getTime() - Date.now()) / 1000,
       );
       throw new BadRequestException({
-        success: false,
-        statusCode: 400,
         message: `OTP already sent. Please wait ${remainingSeconds} seconds before requesting a new one.`,
       });
     }
@@ -75,8 +71,6 @@ export class AuthService {
     }
 
     return {
-      success: true,
-      statusCode: 201,
       message: 'OTP sent successfully to your registered mobile number.',
       data: { mobile_no, otp, expiresAt: otpExpiry },
     };
@@ -88,22 +82,16 @@ export class AuthService {
 
     if (!user.otp || !user.otpExpiry)
       throw new BadRequestException({
-        success: false,
-        statusCode: 400,
         message: 'OTP not found.',
       });
 
     if (new Date() > user.otpExpiry)
       throw new BadRequestException({
-        success: false,
-        statusCode: 400,
         message: 'OTP has expired.',
       });
 
     if (user.otp !== parseInt(otp))
       throw new UnauthorizedException({
-        success: false,
-        statusCode: 401,
         message: 'Invalid OTP.',
       });
 
@@ -113,8 +101,6 @@ export class AuthService {
     await this.userRepo.save(user);
 
     return {
-      success: true,
-      statusCode: 200,
       message: 'OTP verified successfully.',
       data: { isVerified: true },
     };
@@ -130,16 +116,12 @@ export class AuthService {
 
     if (!user.isVerified)
       throw new ForbiddenException({
-        success: false,
-        statusCode: 403,
         message:
           'Mobile number not verified. Please verify OTP before creating a password.',
       });
 
     if (create_password !== confirm_password)
       throw new BadRequestException({
-        success: false,
-        statusCode: 400,
         message: 'Password and confirm password do not match.',
       });
 
@@ -150,8 +132,6 @@ export class AuthService {
     await this.userRepo.save(user);
 
     return {
-      success: true,
-      statusCode: 201,
       message: 'Password created successfully.',
       data: { mobile_no: user.mobile_no, passwordCreated: true },
     };
@@ -162,8 +142,6 @@ export class AuthService {
     const user = await this.userRepo.findOne({ where: { mobile_no } });
 
     const invalidCredentials = new UnauthorizedException({
-      success: false,
-      statusCode: 401,
       message: 'Invalid mobile number or password.',
     });
 
@@ -178,8 +156,6 @@ export class AuthService {
     );
 
     return {
-      success: true,
-      statusCode: 200,
       message: 'Login successful.',
       data: {
         access_token: token,
@@ -207,8 +183,6 @@ export class AuthService {
     const user = await this.userRepo.findOne({ where: { mobile_no } });
     if (!user)
       throw new NotFoundException({
-        success: false,
-        statusCode: 404,
         message: 'User not found.',
       });
     return user;

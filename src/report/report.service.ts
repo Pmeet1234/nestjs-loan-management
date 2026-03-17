@@ -56,8 +56,6 @@ export class ReportService {
 
     if (!loans.length)
       throw new NotFoundException({
-        success: false,
-        statusCode: 404,
         message: 'No data found for the given filters.',
       });
 
@@ -97,8 +95,6 @@ export class ReportService {
 
     if (!filteredLoans.length)
       throw new NotFoundException({
-        success: false,
-        statusCode: 404,
         message: 'No data found for the given filters.',
       });
 
@@ -187,8 +183,6 @@ export class ReportService {
         : { totalRecords: totalCount, totalPages, currentPage: page, limit };
 
     const responseData = {
-      success: true,
-      statusCode: 200,
       message: 'User loan and EMI data fetched successfully.',
       data: { pagination, users },
     };

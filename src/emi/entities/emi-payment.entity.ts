@@ -1,8 +1,11 @@
+import { Loan } from 'src/loan/entities/loan.entity';
 import {
   Entity,
   Column,
   PrimaryGeneratedColumn,
   CreateDateColumn,
+  ManyToOne,
+  JoinColumn,
 } from 'typeorm';
 
 @Entity('emi_payment')
@@ -39,4 +42,8 @@ export class EmiPayment {
 
   @CreateDateColumn()
   createdAt!: Date;
+
+  @ManyToOne(() => Loan, { nullable: true, eager: false })
+  @JoinColumn({ name: 'loanId' })
+  loan!: Loan;
 }

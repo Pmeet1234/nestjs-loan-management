@@ -22,8 +22,6 @@ export class UserService {
 
     if (!user)
       throw new NotFoundException({
-        success: false,
-        statusCode: 404,
         message: 'User not found.',
       });
 

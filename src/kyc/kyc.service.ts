@@ -28,15 +28,11 @@ export class KycService {
 
     if (!user)
       throw new NotFoundException({
-        success: false,
-        statusCode: 404,
         message: 'User not found with the provided mobile number.',
       });
 
     if (user.kyc)
       throw new ConflictException({
-        success: false,
-        statusCode: 409,
         message: 'KYC already exists. Modification is not allowed.',
       });
 
@@ -47,8 +43,6 @@ export class KycService {
     );
 
     return {
-      success: true,
-      statusCode: 201,
       message: 'KYC details added successfully.',
       data: {
         adharcard_no: this.maskAadhar(adharcard_no),
@@ -73,15 +67,11 @@ export class KycService {
 
     if (existing.adharcard_no === adharcard_no)
       throw new ConflictException({
-        success: false,
-        statusCode: 409,
         message: 'Aadhaar number is already registered with another account.',
       });
 
     if (existing.pancard_no === pancard_no)
       throw new ConflictException({
-        success: false,
-        statusCode: 409,
         message: 'PAN number is already registered with another account.',
       });
   }

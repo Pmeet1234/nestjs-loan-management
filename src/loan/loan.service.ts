@@ -31,22 +31,16 @@ export class LoanService {
 
     if (!user)
       throw new NotFoundException({
-        success: false,
-        statusCode: 404,
         message: 'User not found.',
       });
 
     if (!user.isEmploymentApproved)
       throw new ForbiddenException({
-        success: false,
-        statusCode: 403,
         message: 'Employment not yet approved.',
       });
 
     if (!user.company)
       throw new NotFoundException({
-        success: false,
-        statusCode: 404,
         message: 'Company details not found.',
       });
 
@@ -79,21 +73,19 @@ export class LoanService {
 
     return {
       success: true,
-      statusCode: 201,
-      message: 'Loan approved successfully.',
       data: {
         loanId: loan.id,
         userId: user.id,
         username: user.username,
         mobile_no: user.mobile_no,
-        salary,
-        requestedAmount,
-        approvedAmount,
+        salary: `₹${salary}`,
+        requestedAmount: `₹${requestedAmount}`,
+        approvedAmount: `₹${approvedAmount}`,
         interestRate: `${this.INTEREST_RATE * 100}%`,
-        interestAmount,
-        totalPayable,
+        interestAmount: `₹${interestAmount}`,
+        totalPayable: `₹${totalPayable}`,
         emiCount,
-        emiAmount,
+        emiAmount: `₹${emiAmount}`,
         totalLoansTaken,
         status: 'active',
       },
@@ -110,14 +102,10 @@ export class LoanService {
 
     if (!loans.length)
       throw new NotFoundException({
-        success: false,
-        statusCode: 404,
         message: 'No loan history found.',
       });
 
     return {
-      success: true,
-      statusCode: 200,
       message: 'Loan history fetched successfully.',
       data: {
         userId,
@@ -126,14 +114,14 @@ export class LoanService {
           loanId: l.id,
           username: l.user.username,
           mobile_no: l.user.mobile_no,
-          requestedAmount: l.requestedAmount,
-          approvedAmount: l.approvedAmount,
-          totalPayable: l.totalPayable,
-          amountPaid: l.amountPaid,
+          requestedAmount: `₹${l.requestedAmount}`,
+          approvedAmount: `₹${l.approvedAmount}`,
+          totalPayable: `₹${l.totalPayable}`,
+          amountPaid: `₹${l.amountPaid}`,
           emiCount: l.emiCount,
-          emiAmount: l.emiAmount,
+          emiAmount: `₹${l.emiAmount}`,
           status: l.status,
-          createdAt: l.createdAt,
+          createdAt: this.formatDate(l.createdAt),
         })),
       },
     };
@@ -141,18 +129,11 @@ export class LoanService {
 
   // ─── LOAN REPORT (pagination + download) ─────────────────────
   async getLoanReport(res: Response, query: LoanReportQueryDto) {
-    const {
-      fromDate,
-      toDate,
-      status,
-      username,
-      mobile_no,
-      page,
-      limit,
-      showAll,
-      download,
-    } = query;
+    const { fromDate, toDate, showAll, download, search } = query;
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 10;
 
+    // ─── Build loan query (no pagination here) ────────────────────
     const qb = this.loanRepo
       .createQueryBuilder('loan')
       .leftJoinAndSelect('loan.user', 'user')
@@ -167,11 +148,33 @@ export class LoanService {
         'loan.emiAmount',
         'loan.status',
         'loan.createdAt',
+        'loan.totalLoansTaken',
         'user.id',
         'user.username',
         'user.mobile_no',
       ]);
 
+    // ─── Single search: userId, loanId, status, username, mobile_no ─
+    if (search) {
+      const isNumber = !isNaN(Number(search));
+      const isValidId = isNumber && Number(search) <= 2147483647;
+      qb.andWhere(
+        `(
+          user.username  ILIKE :search
+          OR user.mobile_no = :exactSearch
+          OR loan.status    ILIKE :search
+          ${isValidId ? 'OR loan.id  = :numSearch' : ''}
+          ${isValidId ? 'OR user.id  = :numSearch' : ''}
+        )`,
+        {
+          search: `%${search}%`,
+          exactSearch: search,
+          ...(isValidId && { numSearch: Number(search) }),
+        },
+      );
+    }
+
+    // ─── Loan Created Date Filter ─────────────────────────────────
     if (fromDate)
       qb.andWhere('loan.createdAt >= :fromDate', {
         fromDate: new Date(fromDate),
@@ -181,54 +184,49 @@ export class LoanService {
       to.setHours(23, 59, 59, 999);
       qb.andWhere('loan.createdAt <= :toDate', { toDate: to });
     }
-    if (status) qb.andWhere('loan.status = :status', { status });
-    if (username)
-      qb.andWhere('user.username ILIKE :username', {
-        username: `%${username}%`,
-      });
-    if (mobile_no) qb.andWhere('user.mobile_no = :mobile_no', { mobile_no });
-
-    const totalCount = await qb.getCount();
 
     qb.orderBy('loan.id', 'ASC');
-    if (showAll !== 'true') qb.skip((page - 1) * limit).take(limit);
 
     const loans = await qb.getMany();
 
     if (!loans.length)
       throw new BadRequestException({
-        success: false,
-        statusCode: 400,
         message: 'No loans found for the given filters.',
       });
 
-    const loanList = loans.map((l) => ({
+    // ─── Apply pagination AFTER all filters ───────────────────────
+    const totalCount = loans.length;
+    const totalPages = Math.ceil(totalCount / limit);
+    const paginatedLoans =
+      showAll === 'true'
+        ? loans
+        : loans.slice((page - 1) * limit, page * limit);
+
+    const loanList = paginatedLoans.map((l) => ({
       loanId: l.id,
-      username: l.user.username,
-      mobile_no: l.user.mobile_no,
-      requestedAmount: l.requestedAmount,
-      approvedAmount: l.approvedAmount,
-      interestAmount: l.interestAmount,
-      totalPayable: l.totalPayable,
-      amountPaid: l.amountPaid,
-      remainingBalance: this.calcRemainingBalance(l.totalPayable, l.amountPaid),
+      userId: l.user.id, // ✅ added
+      username: l.user.username, // ✅ added
+      mobile_no: l.user.mobile_no, // ✅ added
+      requestedAmount: `₹${l.requestedAmount}`,
+      approvedAmount: `₹${l.approvedAmount}`,
+      interestAmount: `₹${l.interestAmount}`,
+      totalPayable: `₹${l.totalPayable}`,
+      amountPaid: `₹${l.amountPaid}`,
+      remainingBalance: `₹${this.calcRemainingBalance(l.totalPayable, l.amountPaid)}`,
       emiCount: l.emiCount,
-      emiAmount: l.emiAmount,
+      emiAmount: `₹${l.emiAmount}`,
       status: l.status,
-      createdAt: l.createdAt,
+      createdAt: this.formatDate(l.createdAt), // ✅ formatted
     }));
 
-    const totalPages = Math.ceil(totalCount / limit);
     const pagination =
       showAll === 'true'
         ? { totalRecords: totalCount, totalPages: 1, showAll: true }
         : { totalRecords: totalCount, totalPages, currentPage: page, limit };
 
     const responseData = {
-      success: true,
-      statusCode: 200,
       message: 'Loan report fetched successfully.',
-      data: { pagination, totalLoans: loans.length, loans: loanList },
+      data: { pagination, totalLoans: loanList.length, loans: loanList },
     };
 
     if (download === 'csv') return this.downloadLoanCsv(loanList, res);
@@ -263,33 +261,27 @@ export class LoanService {
 
     if (!loan)
       throw new NotFoundException({
-        success: false,
-        statusCode: 404,
         message: `Loan ID ${loanId} not found.`,
       });
 
     return {
-      success: true,
-      statusCode: 200,
       message: 'Loan fetched successfully.',
       data: {
         loanId: loan.id,
+        userId: loan.user.id,
         username: loan.user.username,
         mobile_no: loan.user.mobile_no,
-        requestedAmount: loan.requestedAmount,
-        approvedAmount: loan.approvedAmount,
-        interestAmount: loan.interestAmount,
-        totalPayable: loan.totalPayable,
-        amountPaid: loan.amountPaid,
-        remainingBalance: this.calcRemainingBalance(
-          loan.totalPayable,
-          loan.amountPaid,
-        ),
+        requestedAmount: `₹${loan.requestedAmount}`,
+        approvedAmount: `₹${loan.approvedAmount}`,
+        interestAmount: `₹${loan.interestAmount}`,
+        totalPayable: `₹${loan.totalPayable}`,
+        amountPaid: `₹${loan.amountPaid}`,
+        remainingBalance: `₹${this.calcRemainingBalance(loan.totalPayable, loan.amountPaid)}`,
         emiCount: loan.emiCount,
-        emiAmount: loan.emiAmount,
+        emiAmount: `₹${loan.emiAmount}`,
         status: loan.status,
         totalLoansTaken: loan.totalLoansTaken,
-        createdAt: loan.createdAt,
+        createdAt: this.formatDate(loan.createdAt),
       },
     };
   }
@@ -306,24 +298,30 @@ export class LoanService {
 
     if (existing?.status === 'active')
       throw new ConflictException({
-        success: false,
-        statusCode: 409,
         message: `Active loan exists (ID: ${existing.id}). Complete all EMIs first.`,
       });
 
     if (existing?.status === 'pending')
       throw new ConflictException({
-        success: false,
-        statusCode: 409,
         message: `Pending loan exists (ID: ${existing.id}). Finish it first.`,
       });
 
     if (existing?.status === 'defaulted')
       throw new ForbiddenException({
-        success: false,
-        statusCode: 403,
         message: 'Previous loan defaulted. Not eligible for new loan.',
       });
+  }
+
+  // ─── PRIVATE: FORMAT DATE ─────────────────────────────────────
+  private formatDate(date: Date | string | null | undefined): string {
+    if (!date) return '';
+    return new Date(date)
+      .toLocaleDateString('en-GB', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      })
+      .replace(/ /g, '-'); // e.g. 04-Mar-2024
   }
 
   // ─── PRIVATE: CALC REMAINING BALANCE ─────────────────────────
@@ -341,6 +339,7 @@ export class LoanService {
   private downloadLoanCsv(loans: any[], res: Response): void {
     const headers = [
       'Loan ID',
+      'User ID',
       'Username',
       'Mobile No',
       'Requested Amount',
@@ -358,6 +357,7 @@ export class LoanService {
     const rows = loans.map((l) =>
       [
         l.loanId,
+        l.userId,
         l.username,
         l.mobile_no,
         l.requestedAmount,
@@ -369,7 +369,7 @@ export class LoanService {
         l.emiCount,
         l.emiAmount,
         l.status,
-        new Date(l.createdAt).toISOString().split('T')[0],
+        l.createdAt,
       ].map(String),
     );
 

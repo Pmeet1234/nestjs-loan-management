@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import {
   Injectable,
@@ -27,22 +28,16 @@ export class EmiService {
 
     if (loan.status === 'completed')
       throw new ConflictException({
-        success: false,
-        statusCode: 409,
         message: 'Loan already completed.',
       });
 
     if (loan.status === 'defaulted')
       throw new ForbiddenException({
-        success: false,
-        statusCode: 403,
         message: 'Loan defaulted. Not eligible.',
       });
 
     if (dto.amount < Number(loan.emiAmount))
       throw new BadRequestException({
-        success: false,
-        statusCode: 400,
         message: `Minimum EMI amount is ₹${loan.emiAmount}.`,
       });
 
@@ -51,8 +46,6 @@ export class EmiService {
     if (dto.isLoanDefaulted(loanCreatedAt, loan.emiCount)) {
       await this.markLoanDefaulted(loan);
       throw new ConflictException({
-        success: false,
-        statusCode: 409,
         message: 'Loan duration ended.',
       });
     }
@@ -62,8 +55,6 @@ export class EmiService {
 
     if (paidCount >= loan.emiCount)
       throw new ConflictException({
-        success: false,
-        statusCode: 409,
         message: 'All EMIs already paid.',
       });
 
@@ -85,8 +76,6 @@ export class EmiService {
 
     if (dto.isOverPayment(totalPaid, remainingBalance))
       throw new BadRequestException({
-        success: false,
-        statusCode: 400,
         message: `Payment ₹${totalPaid} exceeds remaining balance ₹${remainingBalance}.`,
       });
 
@@ -130,21 +119,22 @@ export class EmiService {
     );
 
     return {
-      success: true,
-      statusCode: 200,
       message: isLoanCompleted
         ? 'Loan completed. You can now apply for a new loan.'
         : `EMI ${emiNumber} paid successfully.`,
       data: {
         loanId: dto.loanId,
+        userId: loan.user.id,
+        username: loan.user.username,
+        mobile_no: loan.user.mobile_no,
         emiNumber,
-        emiAmount: dto.amount,
-        penaltyAmount,
-        totalPaid,
-        totalAmountPaidSoFar: newTotalAmountPaid,
-        remainingBalance: Math.max(newRemainingBalance, 0),
-        dueDate,
-        paidDate: new Date(),
+        emiAmount: `₹${dto.amount}`,
+        penaltyAmount: `₹${penaltyAmount}`,
+        totalPaid: `₹${totalPaid}`,
+        totalAmountPaidSoFar: `₹${newTotalAmountPaid}`,
+        remainingBalance: `₹${Math.max(newRemainingBalance, 0)}`,
+        dueDate: this.formatDate(dueDate),
+        paidDate: this.formatDate(new Date()),
         status: emiStatus,
         remainingEmis: isLoanCompleted ? 0 : loan.emiCount - emiNumber,
         loanStatus: isLoanCompleted ? 'completed' : 'active',
@@ -185,21 +175,22 @@ export class EmiService {
     );
 
     return {
-      success: true,
-      statusCode: 200,
       message: 'EMI status fetched successfully.',
       data: {
         loanId,
+        userId: loan.user.id,
+        username: loan.user.username,
+        mobile_no: loan.user.mobile_no,
         loanStatus: loan.status,
         totalEmis: loan.emiCount,
         paidEmis: paidCount,
         remainingEmis,
-        emiAmount: loan.emiAmount,
-        totalPayable: loan.totalPayable,
-        totalAmountPaid,
-        remainingBalance: Math.max(remainingBalance, 0),
-        nextDueDate: remainingEmis > 0 ? nextDueDate : null,
-        loanEndDate,
+        emiAmount: `₹${loan.emiAmount}`,
+        totalPayable: `₹${loan.totalPayable}`,
+        totalAmountPaid: `₹${totalAmountPaid}`,
+        remainingBalance: `₹${Math.max(remainingBalance, 0)}`,
+        nextDueDate: remainingEmis > 0 ? this.formatDate(nextDueDate) : null,
+        loanEndDate: this.formatDate(loanEndDate),
         daysLeft,
         loanTimeMessage:
           daysLeft <= 0
@@ -211,30 +202,80 @@ export class EmiService {
 
   // ─── GET EMI HISTORY (pagination + download) ──────────────────
   async getEmiHistory(query: EmiHistoryQueryDto, res: Response) {
-    const { loanId, page, limit, showAll, download } = query;
+    const { fromDate, toDate, emiNumber, showAll, download, search } = query;
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 10;
 
+    // ─── Build EMI query ──────────────────────────────────────────
     const qb = this.emiRepo
       .createQueryBuilder('emi')
-      .where('emi.loanId = :loanId', { loanId })
-      .orderBy('emi.emiNumber', 'ASC');
+      .leftJoinAndSelect('emi.loan', 'loan')
+      .leftJoinAndSelect('loan.user', 'user')
+      .orderBy('emi.id', 'ASC')
+      .addOrderBy('emi.emiNumber', 'ASC');
+
+    // ─── Single search: userId, loanId, mobile_no ─────────────────
+    if (search) {
+      const isNumber = !isNaN(Number(search));
+      const isValidId = isNumber && Number(search) <= 2147483647;
+      qb.andWhere(
+        `(
+          user.mobile_no = :exactSearch
+          OR user.username ILIKE :search
+          ${isValidId ? 'OR emi.loanId = :numSearch' : ''}
+          ${isValidId ? 'OR user.id    = :numSearch' : ''}
+        )`,
+        {
+          search: `%${search}%`,
+          exactSearch: search,
+          ...(isValidId && { numSearch: Number(search) }),
+        },
+      );
+    }
+
+    // ─── Filter EMIs by dueDate range ─────────────────────────────
+    if (fromDate)
+      qb.andWhere('emi.dueDate >= :fromDate', { fromDate: new Date(fromDate) });
+    if (toDate) {
+      const end = new Date(toDate);
+      end.setHours(23, 59, 59, 999);
+      qb.andWhere('emi.dueDate <= :toDate', { toDate: end });
+    }
+
+    // ─── Filter by emiNumber ──────────────────────────────────────
+    if (emiNumber !== undefined)
+      qb.andWhere('emi.emiNumber = :emiNumber', { emiNumber });
 
     const totalCount = await qb.getCount();
 
     if (!totalCount)
       throw new NotFoundException({
-        success: false,
-        statusCode: 404,
         message: 'No EMI history found.',
       });
 
-    if (showAll !== 'true') qb.skip((page - 1) * limit).take(limit);
-
-    const emis = await qb.getMany();
-    const totalAmountPaid = emis.reduce(
-      (sum, e) => sum + Number(e.totalPaid),
-      0,
-    );
+    // ─── Apply pagination AFTER all filters ───────────────────────
+    const allEmis = await qb.getMany();
     const totalPages = Math.ceil(totalCount / limit);
+    const paginatedEmis =
+      showAll === 'true'
+        ? allEmis
+        : allEmis.slice((page - 1) * limit, page * limit);
+
+    const emiList = paginatedEmis.map((e) => ({
+      emiId: e.id,
+      loanId: e.loanId,
+      userId: e.loan?.user?.id,
+      username: e.loan?.user?.username,
+      mobile_no: e.loan?.user?.mobile_no,
+      emiNumber: e.emiNumber,
+      totalEmiCount: e.loan?.emiCount,
+      emiAmount: `₹${e.emiAmount}`,
+      penaltyAmount: `₹${e.penaltyAmount}`,
+      totalPaid: `₹${e.totalPaid}`,
+      dueDate: this.formatDate(e.dueDate),
+      paidDate: this.formatDate(e.paidDate),
+      status: e.status,
+    }));
 
     const pagination =
       showAll === 'true'
@@ -242,19 +283,31 @@ export class EmiService {
         : { totalRecords: totalCount, totalPages, currentPage: page, limit };
 
     const responseData = {
-      success: true,
-      statusCode: 200,
       message: 'EMI history fetched successfully.',
-      data: { loanId, pagination, totalAmountPaid, emis },
+      data: {
+        pagination,
+        emis: emiList,
+      },
     };
 
-    if (download === 'csv') return this.downloadCsv(loanId, emis, res);
+    if (download === 'csv') return this.downloadCsv(emiList, res);
     if (download === 'json') return this.downloadJson(responseData, res);
 
     return responseData;
   }
 
   // ─── PRIVATE HELPERS ──────────────────────────────────────────
+  private formatDate(date: Date | string | null | undefined): string {
+    if (!date) return '';
+    return new Date(date)
+      .toLocaleDateString('en-GB', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      })
+      .replace(/ /g, '-'); // e.g. 04-Mar-2024
+  }
+
   private async findLoanOrFail(loanId: number) {
     const loan = await this.loanRepo.findOne({
       where: { id: loanId },
@@ -262,8 +315,6 @@ export class EmiService {
     });
     if (!loan)
       throw new NotFoundException({
-        success: false,
-        statusCode: 404,
         message: 'Loan not found.',
       });
     return loan;
@@ -282,11 +333,15 @@ export class EmiService {
   }
 
   // ─── PRIVATE: CSV DOWNLOAD ────────────────────────────────────
-  private downloadCsv(loanId: number, emis: EmiPayment[], res: Response): void {
+  private downloadCsv(emis: any[], res: Response): void {
     const headers = [
       'EMI ID',
       'Loan ID',
+      'User ID',
+      'Username',
+      'Mobile No',
       'EMI Number',
+      'Total EMI Count',
       'EMI Amount',
       'Penalty Amount',
       'Total Paid',
@@ -297,14 +352,18 @@ export class EmiService {
 
     const rows = emis.map((e) =>
       [
-        e.id,
-        loanId,
+        e.emiId,
+        e.loanId,
+        e.userId,
+        e.username,
+        e.mobile_no,
         e.emiNumber,
+        e.totalEmiCount,
         e.emiAmount,
         e.penaltyAmount,
         e.totalPaid,
-        new Date(e.dueDate).toISOString().split('T')[0],
-        e.paidDate ? new Date(e.paidDate).toISOString().split('T')[0] : '',
+        e.dueDate,
+        e.paidDate,
         e.status,
       ].map(String),
     );
@@ -314,7 +373,7 @@ export class EmiService {
       ...rows.map((r) => r.map((c) => `"${c.replace(/"/g, '""')}"`).join(',')),
     ].join('\n');
 
-    const filename = `emi-history-loan-${loanId}-${new Date().toISOString().split('T')[0]}.csv`;
+    const filename = `emi-history-${new Date().toISOString().split('T')[0]}.csv`;
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(csv);

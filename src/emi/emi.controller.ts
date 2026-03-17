@@ -3,35 +3,35 @@ import {
   Post,
   Get,
   Body,
-  // Param,
   UseGuards,
-  ParseIntPipe,
   Query,
   Res,
+  ParseIntPipe,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { EmiService } from './emi.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PayEmiDto } from 'src/auth/dto/pay_emi.dto';
 import { EmiHistoryQueryDto } from './dto/emi-history-query.dto';
-import type { Response } from 'express';
+
 @Controller('emi')
 export class EmiController {
   constructor(private emiService: EmiService) {}
 
+  // ─── POST /emi/pay ────────────────────────────────────────────
   @UseGuards(JwtAuthGuard)
   @Post('pay')
-  async payEmi(@Body() body: PayEmiDto): Promise<any> {
-    return await this.emiService.payEmi(body);
+  payEmi(@Body() body: PayEmiDto) {
+    return this.emiService.payEmi(body);
   }
 
-  // @UseGuards(JwtAuthGuard)
+  // ─── GET /emi/status?loanId=1 ─────────────────────────────────
   @Get('status')
-  async getEmiStatus(
-    @Query('loanId', ParseIntPipe) loanId: number,
-  ): Promise<any> {
-    return await this.emiService.getEmiStatus(loanId);
+  getEmiStatus(@Query('loanId', ParseIntPipe) loanId: number) {
+    return this.emiService.getEmiStatus(loanId);
   }
 
+  // ─── GET /emi/history ─────────────────────────────────────────
   @Get('history')
   getEmiHistory(
     @Query() query: EmiHistoryQueryDto,
