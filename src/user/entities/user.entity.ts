@@ -5,6 +5,7 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   OneToMany,
+  JoinColumn,
 } from 'typeorm';
 import { Company } from '../../company/entities/company.entity';
 import { OneToOne } from 'typeorm';
@@ -41,6 +42,7 @@ export class User {
   updatedAt!: Date;
 
   @OneToOne(() => Company, (company) => company.user)
+  @JoinColumn({ name: 'userId' })
   company!: Company;
 
   @OneToOne(() => Kyc, (kyc) => kyc.user)

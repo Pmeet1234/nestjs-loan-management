@@ -5,8 +5,10 @@ import {
   ManyToOne,
   CreateDateColumn,
   JoinColumn,
+  OneToMany,
 } from 'typeorm';
 import { User } from '../../user/entities/user.entity';
+import { EmiPayment } from 'src/emi/entities/emi-payment.entity';
 export type LoanStatus = 'PENDING' | 'ACTIVE' | 'PAID';
 @Entity()
 export class Loan {
@@ -48,4 +50,7 @@ export class Loan {
 
   @Column({ default: 1 })
   totalLoansTaken!: number;
+
+  @OneToMany(() => EmiPayment, (emi) => emi.loan)
+  emiPayments!: EmiPayment[];
 }

@@ -41,7 +41,7 @@ export class LoanReportQueryDto {
   @IsIn(['true', 'false'])
   showAll?: string;
 
-  @IsOptional()
-  @IsIn(['csv', 'json'])
-  download?: string;
+  // @IsOptional()
+  // @IsIn(['csv', 'json'])
+  // download?: string;
 }

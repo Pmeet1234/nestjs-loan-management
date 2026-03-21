@@ -21,7 +21,6 @@ export class CompanyService {
       where: { mobile_no },
       relations: ['company'],
     });
-
     if (!user)
       throw new NotFoundException({
         message: 'User not found with the provided mobile number.',
@@ -30,10 +29,8 @@ export class CompanyService {
     await this.companyRepo.save(
       this.companyRepo.create({ company_name, salary, user }),
     );
-
     user.isEmploymentApproved = true;
     await this.userRepo.save(user);
-
     return {
       message: 'Company details added successfully.',
       data: {
