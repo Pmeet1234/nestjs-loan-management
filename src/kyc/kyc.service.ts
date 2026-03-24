@@ -76,6 +76,7 @@ export class KycService {
       });
   }
 
+
   private maskAadhar(adharcard_no: string): string {
     return 'XXXX-XXXX-' + adharcard_no.slice(-4);
   }

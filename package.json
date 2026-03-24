@@ -1,8 +1,8 @@
 {
   "name": "project_1",
   "version": "0.0.1",
-  "description": "",
-  "author": "",
+  "description": "Loan EMI API",
+  "author": "Meet",
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
