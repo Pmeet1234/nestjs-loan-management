@@ -13,16 +13,15 @@ import { UserLoanEmiReportDto } from './dto/user-loan-emi-report.dto';
 @Injectable() // nestjs register this class so it become provider and can be injected anywhere(controller)
 export class ReportService {
   constructor(
-    @InjectRepository(User) private userRepo: Repository<User>, // typescript autocomplete works, catches typos
+    @InjectRepository(User) private userRepo: Repository<User>, // typescript autocomplete ,TypeScript catches wrong method names
     @InjectRepository(Loan) private loanRepo: Repository<Loan>, // gives access to loan table methods
     @InjectRepository(EmiPayment) private emiRepo: Repository<EmiPayment>, // gives access to emi table methods
   ) {}
 
-  // async → because we use await inside (DB queries are async)
   // filters → query params from request
   // res → express response object (needed for download)
   async getAllUserLoanAndEmiData(filters: UserLoanEmiReportDto, res: Response) {
-    // destructure all filters from DTO
+    // destructure extract value from object into separate variables
     const { search, startDate, endDate, emiNumber, showAll, download } =
       filters;
     const page = filters.page ?? 1; // ?? 1 → if page is undefined use 1
@@ -41,21 +40,22 @@ export class ReportService {
     if (search) {
       console.log('🔍 Search filter applied:', search);
       const isNumber = !isNaN(Number(search)); // check if search is number → to search by id
-      console.log('🔍 Is search a number?', isNumber);
+      const IsValidDate = isNumber && Number(search) <= 2147483647;
+      console.log('🔍 Is search a number?', IsValidDate);
+
       qb.andWhere(
         `(
       user.username ILIKE :search        
-      or user.mobile_no = :exact         
-      or loan.status ILIKE :search       
-      ${isNumber ? 'or loan.id = :numSearch' : ''}  
-      ${isNumber ? 'or user.id = :numSearch' : ''})`,
+      or user.mobile_no ILIKE :search       
+      or loan.status ILIKE :search    
+      ${IsValidDate ? 'or loan.id = :numSearch' : ''}  
+      ${IsValidDate ? 'or user.id = :numSearch' : ''})`,
         // ILIKE → case insensitive search (PostgreSQL)
         // :search → named param (prevents SQL injection)
         // %search% → wildcard (matches anywhere in string)
         {
           search: `%${search}%`,
-          exact: search,
-          ...(isNumber && { numSearch: Number(search) }), // spread only if isNumber true
+          ...(IsValidDate && { numSearch: Number(search) }), // spread only if isNumber true
         },
       );
     }
@@ -89,6 +89,9 @@ export class ReportService {
     qb.orderBy('loan.id', 'ASC').addOrderBy('emi.emiNumber', 'ASC');
     console.log('🔑 Params:', qb.getParameters());
 
+    if (showAll !== 'true') {
+      qb.skip(page - 1 * limit).take(limit);
+    }
     // declare variables outside try/catch so accessible after
     let loans: Loan[] = [];
     let totalCounts: number = 0;
@@ -97,7 +100,7 @@ export class ReportService {
       // Promise.all → runs both queries at SAME TIME (parallel = faster)
       // await → pauses function here, releases thread to handle other requests
       // Event Loop → handles other requests while DB queries run
-      [loans, totalCounts] = await Promise.all([qb.getMany(), qb.getCount()]);
+      [loans, totalCounts] = await qb.getManyAndCount();
 
       console.log('📦 Total loans fetched:', loans.length);
       console.log('📦 Loans count:', totalCounts);
@@ -172,31 +175,29 @@ export class ReportService {
     console.log('🗺️  UserMap values:', [...userMap.values()]);
 
     const allUsers = [...userMap.values()]; // converts the Map values into a plain array
-    const totalRecords = allUsers.length; // total unique users count
-    const totalPages = Math.ceil(totalRecords / limit); // Math.ceil → round up (7/2 = 3.5 → 4)
+    // const totalRecords = allUsers.length; // total unique users count
+    const totalPages = Math.ceil(totalCounts / limit); // Math.ceil → round up (7/2 = 3.5 → 4)
 
     // showAll=true → return all users, skip pagination
     // showAll=false → slice array to return only current page
-    const paginatedUsers =
-      showAll === 'true'
-        ? allUsers
-        : allUsers.slice((page - 1) * limit, page * limit);
+    const paginatedUsers = allUsers;
+    // showAll === 'true'
+    //   ? allUsers
+    //   : allUsers.slice((page - 1) * limit, page * limit);
     // slice formula: page=2, limit=5 → slice(5, 10) → users 6-10
 
     // pagination meta → sent to frontend for UI pagination buttons
     const pagination =
       showAll === 'true'
         ? {
-            totalRecords,
+            totalRecords: totalCounts,
             showAll: true,
           }
         : {
-            totalRecords,
+            totalRecords: totalCounts,
             totalPages,
             currentPage: page,
             limit,
-            // hasNextPage: page < totalPages,
-            // hasPrevPage: page > 1,
           };
 
     // final response shape
@@ -246,7 +247,7 @@ export class ReportService {
 
   // private → only used inside this class
   // formats Date object → '04-Mar-2024' string
-  private formatDate(date: Date | null): string {
+  formatDate(date: Date | null): string {
     if (!date) return ''; // if null → return empty string (avoid crash)
     return new Date(date)
       .toLocaleDateString('en-GB', {
@@ -327,7 +328,7 @@ export class ReportService {
 
         // join headers + rows into CSV string
         // wrap each cell in quotes → handles commas inside values
-        const csv = [
+        const csvContent = [
           headers.join(','), // header row
           ...rows.map(
             (row) =>
@@ -335,6 +336,7 @@ export class ReportService {
             // replace " with "" → escape quotes inside cell values
           ),
         ].join('\n'); // each row on new line
+        const csv = '\uFEFF' + csvContent;
 
         console.log(`✅ CSV ready: ${rows.length} rows`);
         resolve(csv); // success → Promise fulfilled → await gets csv string

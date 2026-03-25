@@ -248,8 +248,7 @@ export class LoanService {
     }
 
     if (showAll !== 'true') {
-      const skip = (page - 1) * limit;
-      qb.skip(skip).take(limit);
+      qb.skip(page - 1 * limit).take(limit);
     }
 
     qb.orderBy('loan.id', 'ASC');

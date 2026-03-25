@@ -11,7 +11,7 @@ export class ReportController {
   @Get('user-loan-emi')
   getAllUserLoanAndEmiData(
     @Query() filters: UserLoanEmiReportDto,
-    @Res({ passthrough: false }) res: Response,
+    @Res({ passthrough: true }) res: Response,
   ) {
     return this.reportService.getAllUserLoanAndEmiData(filters, res);
   }
