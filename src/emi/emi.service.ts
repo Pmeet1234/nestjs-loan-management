@@ -14,12 +14,16 @@ import { EmiPayment } from '../emi/entities/emi-payment.entity';
 import { Loan } from '../loan/entities/loan.entity';
 import { PayEmiDto } from 'src/auth/dto/pay_emi.dto';
 import { EmiHistoryQueryDto } from './dto/emi-history-query.dto';
+import { randomBytes } from 'crypto';
+import { PaymentLink } from './entities/payment-link.entity';
 
 @Injectable()
 export class EmiService {
   constructor(
     @InjectRepository(EmiPayment) private emiRepo: Repository<EmiPayment>,
     @InjectRepository(Loan) private loanRepo: Repository<Loan>,
+    @InjectRepository(PaymentLink)
+    private paymentLinkRepo: Repository<PaymentLink>,
   ) {}
 
   // ─── PAY EMI ──────────────────────────────────────────────────
@@ -296,6 +300,104 @@ export class EmiService {
     return responseData;
   }
 
+  async generatePaymentLink(loanId: number, emiNumber: number) {
+    const token = randomBytes(16).toString('hex');
+
+    await this.paymentLinkRepo.save({
+      loanId,
+      emiNumber,
+      token,
+      isUsed: false,
+    });
+
+    return {
+      url: `http://localhost:3000/pay.html?token=${token}`,
+    };
+  }
+
+  async getEmiDetailsByToken(token: string) {
+    const link = await this.paymentLinkRepo.findOne({ where: { token } });
+
+    if (!link) throw new NotFoundException('Invalid link');
+
+    const loan = await this.findLoanOrFail(link.loanId);
+
+    const paidEmis = await this.emiRepo.find({
+      where: { loanId: link.loanId },
+    });
+
+    const paidCount = this.countPaidEmis(paidEmis);
+
+    const totalPaid = paidEmis.reduce((sum, e) => sum + Number(e.totalPaid), 0);
+
+    const rawRemaining = Number(loan.totalPayable) - totalPaid;
+    const remainingBalance = Math.max(parseFloat(rawRemaining.toFixed(2)), 0);
+    const lastEmi = paidEmis[paidEmis.length - 1];
+    const penaltyAmount = lastEmi ? Number(lastEmi.penaltyAmount) : 0;
+    return {
+      loanId: loan.id,
+      emiNumber: link.emiNumber,
+      loanAmount: Number(loan.approvedAmount),
+      interestAmount: Number(loan.interestAmount),
+      totalPayable: Number(loan.totalPayable),
+      emiAmount: Number(loan.emiAmount),
+      totalPaid,
+      remainingBalance,
+      penaltyAmount,
+      remainingEmis: Math.max(loan.emiCount - paidCount, 0),
+    };
+  }
+
+  async payEmiInternal(loanId: number, amount: number) {
+    const dto = new PayEmiDto();
+    dto.loanId = loanId;
+    dto.amount = amount;
+
+    return this.payEmi(dto);
+  }
+
+  async payEmiByToken(token: string, amount: number) {
+    const link = await this.paymentLinkRepo.findOne({ where: { token } });
+
+    if (!link) throw new NotFoundException('Invalid link');
+
+    if (link.isUsed) {
+      return { message: 'Link already used ❌' };
+    }
+
+    const loan = await this.findLoanOrFail(link.loanId);
+    const paidEmis = await this.emiRepo.find({
+      where: { loanId: loan.id },
+    });
+
+    const totalPaid = paidEmis.reduce((sum, e) => sum + Number(e.totalPaid), 0);
+    const rawRemaining = Number(loan.totalPayable) - totalPaid;
+    const remainingBalance = Math.max(parseFloat(rawRemaining.toFixed(2)), 0);
+    const emiAmount = Number(loan.emiAmount);
+
+    if (amount <= 0) {
+      return { message: 'Enter valid amount' };
+    }
+
+    if (amount > emiAmount) {
+      return {
+        message: `Amount ₹${amount} exceeds EMI amount ₹${emiAmount}`,
+      };
+    }
+
+    if (amount > remainingBalance) {
+      return {
+        message: `Payment ₹${amount} exceeds remaining balance ₹${remainingBalance}`,
+      };
+    }
+
+    const result = await this.payEmiInternal(loan.id, amount);
+    if (amount === remainingBalance) {
+      link.isUsed = true;
+      await this.paymentLinkRepo.save(link);
+    }
+    return result;
+  }
   // ─── PRIVATE HELPERS ──────────────────────────────────────────
   private formatDate(date: Date | string | null | undefined): string {
     if (!date) return '';

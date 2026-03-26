@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>EMI Payment</title>
+
+  <style>
+    body { font-family: Arial; background: #f2f2f2; padding: 20px; }
+    .card {
+      background: #fff;
+      padding: 20px;
+      border-radius: 10px;
+      max-width: 400px;
+      margin: auto;
+    }
+    button {
+      width: 100%;
+      padding: 12px;
+      background: green;
+      color: white;
+      border: none;
+      margin-top: 15px;
+    }
+    input { width: 100%; padding: 8px; margin-top: 10px; }
+    .error { color: red; }
+    .success { color: green; }
+  </style>
+</head>
+
+<body>
+
+<div class="card">
+  <h2>EMI Payment</h2>
+
+  <div id="details"></div>
+  <div id="paymentSection"></div>
+  <p id="msg"></p>
+</div>
+
+<script>
+  const token = new URLSearchParams(window.location.search).get('token');
+
+  let emiAmount = 0;
+  let remaining = 0;
+
+  async function load() {
+    const res = await fetch(`/emi/public/details?token=${token}`);
+    const result = await res.json();
+    const data = result.data || result;
+
+    emiAmount = data.emiAmount;
+    remaining = data.remainingBalance;
+
+    document.getElementById('details').innerHTML = `
+      <b>Loan ID:</b> ${data.loanId} <br>
+      <b>EMI Number:</b> ${data.emiNumber} <br><br>
+
+      <b>Loan Amount:</b> ₹${data.loanAmount} <br>
+      <b>Interest:</b> ₹${data.interestAmount} <br>
+      <b>Total Payable:</b> ₹${data.totalPayable} <br><br>
+
+      <b>EMI Amount:</b> ₹${data.emiAmount} <br>
+      <b>Penalty:</b> ₹${data.penaltyAmount} <br>
+      <b>Total Paid:</b> ₹${data.totalPaid} <br>
+      <b>Remaining Balance:</b> ₹${data.remainingBalance} <br>
+      <b>Remaining EMIs:</b> ${data.remainingEmis}
+    `;
+
+    if (remaining === 0) {
+      document.getElementById('paymentSection').innerHTML =
+        `<p class="success">🎉 Loan Completed</p>`;
+      return;
+    }
+
+    document.getElementById('paymentSection').innerHTML = `
+      <label>Enter Amount (Max ₹${emiAmount}):</label>
+      <input id="amount" type="number" value="${emiAmount}" />
+
+      <button onclick="pay()">Pay EMI</button>
+    `;
+  }
+
+  async function pay() {
+    const amount = Number(document.getElementById('amount').value);
+
+    if (!amount || amount <= 0) {
+      document.getElementById('msg').innerHTML =
+        '<span class="error">Enter valid amount</span>';
+      return;
+    }
+
+    if (amount > emiAmount) {
+      document.getElementById('msg').innerHTML =
+        `<span class="error">Amount exceeds EMI amount ₹${emiAmount}</span>`;
+      return;
+    }
+
+    const res = await fetch(`/emi/pay-public`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, amount })
+    });
+
+    const result = await res.json();
+
+    document.getElementById('msg').innerHTML =
+      `<span class="success">${result.message}</span>`;
+
+    load();
+  }
+
+  load();
+</script>
+
+</body>
+</html>

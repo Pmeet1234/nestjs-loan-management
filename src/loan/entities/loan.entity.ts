@@ -53,4 +53,5 @@ export class Loan {
 
   @OneToMany(() => EmiPayment, (emi) => emi.loan)
   emiPayments!: EmiPayment[];
+  loanAmount: any;
 }
