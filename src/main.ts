@@ -11,11 +11,11 @@ async function bootstrap() {
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
-      transform: true, // ✅ converts string → number automatically
+      transform: true,
       forbidNonWhitelisted: true,
     }),
   );
-  app.useGlobalInterceptors(new ResponseInterceptor()); // ✅ success handler
+  app.useGlobalInterceptors(new ResponseInterceptor());
   app.useGlobalFilters(new HttpExceptionFilter());
   await app.listen(process.env.PORT ?? 3000);
 }

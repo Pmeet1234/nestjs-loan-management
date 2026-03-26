@@ -31,30 +31,24 @@ export class EmiService {
     const loan = await this.findLoanOrFail(dto.loanId);
 
     if (loan.status === 'completed')
-      throw new ConflictException({
-        message: 'Loan already completed.',
-      });
+      throw new ConflictException({ message: 'Loan already completed.' });
 
     if (loan.status === 'defaulted')
       throw new ForbiddenException({
         message: 'Loan defaulted. Not eligible.',
       });
 
-    if (dto.amount < Number(loan.emiAmount))
-      throw new BadRequestException({
-        message: `Minimum EMI amount is ₹${loan.emiAmount}.`,
-      });
-
     const loanCreatedAt = new Date(loan.createdAt);
 
     if (dto.isLoanDefaulted(loanCreatedAt, loan.emiCount)) {
       await this.markLoanDefaulted(loan);
-      throw new ConflictException({
-        message: 'Loan duration ended.',
-      });
+      throw new ConflictException({ message: 'Loan duration ended.' });
     }
 
-    const paidEmis = await this.emiRepo.find({ where: { loanId: dto.loanId } });
+    const paidEmis = await this.emiRepo.find({
+      where: { loanId: dto.loanId },
+    });
+
     const paidCount = this.countPaidEmis(paidEmis);
 
     if (paidCount >= loan.emiCount)
@@ -62,32 +56,48 @@ export class EmiService {
         message: 'All EMIs already paid.',
       });
 
-    const emiNumber = paidCount + 1;
-    const dueDate = dto.getEmiDueDate(loanCreatedAt, emiNumber);
-    const isDelayed = dto.isDelayed(dueDate);
-    const penaltyAmount = isDelayed
-      ? dto.calculatePenalty(Number(loan.emiAmount))
-      : 0;
-    const totalPaid = dto.calculateTotalPaid(penaltyAmount);
     const totalPayable = Number(loan.totalPayable);
+
     const totalAmountPaidSoFar = paidEmis.reduce(
       (sum, e) => sum + Number(e.totalPaid),
       0,
     );
-    const remainingBalance = parseFloat(
-      (totalPayable - totalAmountPaidSoFar).toFixed(2),
+
+    const remainingBalance = Math.max(
+      parseFloat((totalPayable - totalAmountPaidSoFar).toFixed(2)),
+      0,
     );
 
-    if (dto.isOverPayment(totalPaid, remainingBalance))
+    const emiAmount = Number(loan.emiAmount);
+
+    // 🔥 CORE FIX
+    const maxPayable = Math.min(emiAmount, remainingBalance);
+
+    if (dto.amount <= 0) {
       throw new BadRequestException({
-        message: `Payment ₹${totalPaid} exceeds remaining balance ₹${remainingBalance}.`,
+        message: 'Enter valid amount',
       });
+    }
+
+    if (dto.amount > maxPayable) {
+      throw new BadRequestException({
+        message: `Amount ₹${dto.amount} exceeds allowed amount ₹${maxPayable}`,
+      });
+    }
+
+    const emiNumber = paidCount + 1;
+
+    const dueDate = dto.getEmiDueDate(loanCreatedAt, emiNumber);
+
+    const isDelayed = dto.isDelayed(dueDate);
+
+    const penaltyAmount = isDelayed ? dto.calculatePenalty(emiAmount) : 0;
+
+    const totalPaid = dto.amount + penaltyAmount;
 
     const emiStatus = isDelayed ? 'delayed' : 'paid';
-    const newTotalAmountPaid = dto.calculateNewTotalPaid(
-      totalAmountPaidSoFar,
-      totalPaid,
-    );
+
+    const newTotalAmountPaid = totalAmountPaidSoFar + totalPaid;
 
     await this.emiRepo.save(
       this.emiRepo.create({
@@ -104,41 +114,33 @@ export class EmiService {
     );
 
     loan.amountPaid = newTotalAmountPaid;
-    const isLoanCompleted = dto.isLoanCompleted(
-      emiNumber,
-      loan.emiCount,
-      newTotalAmountPaid,
-      totalPayable,
-    );
+
+    const isLoanCompleted = newTotalAmountPaid >= totalPayable;
 
     if (isLoanCompleted) {
       loan.status = 'completed';
       loan.user.hasAppliedLoan = false;
       await this.loanRepo.manager.save(loan.user);
     }
+
     await this.loanRepo.save(loan);
 
-    const newRemainingBalance = parseFloat(
-      (totalPayable - newTotalAmountPaid).toFixed(2),
+    const newRemainingBalance = Math.max(
+      parseFloat((totalPayable - newTotalAmountPaid).toFixed(2)),
+      0,
     );
 
     return {
       message: isLoanCompleted
-        ? 'Loan completed. You can now apply for a new loan.'
-        : `EMI ${emiNumber} paid successfully.`,
+        ? '🎉 Loan completed successfully'
+        : `EMI ${emiNumber} paid successfully`,
       data: {
         loanId: dto.loanId,
-        userId: loan.user.id,
-        username: loan.user.username,
-        mobile_no: loan.user.mobile_no,
         emiNumber,
         emiAmount: `₹${dto.amount}`,
         penaltyAmount: `₹${penaltyAmount}`,
         totalPaid: `₹${totalPaid}`,
-        totalAmountPaidSoFar: `₹${newTotalAmountPaid}`,
-        remainingBalance: `₹${Math.max(newRemainingBalance, 0)}`,
-        dueDate: this.formatDate(dueDate),
-        paidDate: this.formatDate(new Date()),
+        remainingBalance: `₹${newRemainingBalance}`,
         status: emiStatus,
         remainingEmis: isLoanCompleted ? 0 : loan.emiCount - emiNumber,
         loanStatus: isLoanCompleted ? 'completed' : 'active',
@@ -300,7 +302,22 @@ export class EmiService {
     return responseData;
   }
 
-  async generatePaymentLink(loanId: number, emiNumber: number) {
+  async generatePaymentLink(loanId: number) {
+    const loan = await this.findLoanOrFail(loanId);
+
+    const paidEmis = await this.emiRepo.find({
+      where: { loanId },
+    });
+
+    const paidCount = this.countPaidEmis(paidEmis);
+    const emiNumber = paidCount + 1;
+
+    if (emiNumber > loan.emiCount) {
+      return {
+        message: 'All EMIs already paid',
+      };
+    }
+
     const token = randomBytes(16).toString('hex');
 
     await this.paymentLinkRepo.save({
@@ -311,13 +328,14 @@ export class EmiService {
     });
 
     return {
+      // message: `Payment link generated for EMI ${emiNumber}`,
+      emiNumber,
       url: `http://localhost:3000/pay.html?token=${token}`,
     };
   }
 
   async getEmiDetailsByToken(token: string) {
     const link = await this.paymentLinkRepo.findOne({ where: { token } });
-
     if (!link) throw new NotFoundException('Invalid link');
 
     const loan = await this.findLoanOrFail(link.loanId);
@@ -331,20 +349,51 @@ export class EmiService {
     const totalPaid = paidEmis.reduce((sum, e) => sum + Number(e.totalPaid), 0);
 
     const rawRemaining = Number(loan.totalPayable) - totalPaid;
+
     const remainingBalance = Math.max(parseFloat(rawRemaining.toFixed(2)), 0);
+
     const lastEmi = paidEmis[paidEmis.length - 1];
+
     const penaltyAmount = lastEmi ? Number(lastEmi.penaltyAmount) : 0;
+
+    const loanCreatedAt = new Date(loan.createdAt);
+
+    const dueDate = new Date(loanCreatedAt);
+    dueDate.setMonth(dueDate.getMonth() + link.emiNumber);
+
+    const loanEndDate = new Date(loanCreatedAt);
+    loanEndDate.setMonth(loanEndDate.getMonth() + loan.emiCount);
+
+    const today = new Date();
+    const isDelayed = today > dueDate;
+    const daysLeft = Math.max(
+      Math.ceil((dueDate.getTime() - today.getTime()) / 86400000),
+      0,
+    );
+
+    const emiAmount = Number(loan.emiAmount);
+    const maxPayable = Math.min(emiAmount, remainingBalance);
+
     return {
       loanId: loan.id,
       emiNumber: link.emiNumber,
+
       loanAmount: Number(loan.approvedAmount),
       interestAmount: Number(loan.interestAmount),
       totalPayable: Number(loan.totalPayable),
-      emiAmount: Number(loan.emiAmount),
+
+      emiAmount,
+      maxPayable,
       totalPaid,
       remainingBalance,
+
       penaltyAmount,
       remainingEmis: Math.max(loan.emiCount - paidCount, 0),
+
+      dueDate: this.formatDate(dueDate),
+      loanEndDate: this.formatDate(loanEndDate),
+      isDelayed,
+      daysLeft,
     };
   }
 
@@ -366,36 +415,38 @@ export class EmiService {
     }
 
     const loan = await this.findLoanOrFail(link.loanId);
+
     const paidEmis = await this.emiRepo.find({
       where: { loanId: loan.id },
     });
 
     const totalPaid = paidEmis.reduce((sum, e) => sum + Number(e.totalPaid), 0);
+
     const rawRemaining = Number(loan.totalPayable) - totalPaid;
+
     const remainingBalance = Math.max(parseFloat(rawRemaining.toFixed(2)), 0);
+
     const emiAmount = Number(loan.emiAmount);
+
+    const maxPayable = Math.min(emiAmount, remainingBalance);
 
     if (amount <= 0) {
       return { message: 'Enter valid amount' };
     }
 
-    if (amount > emiAmount) {
+    if (amount > maxPayable) {
       return {
-        message: `Amount ₹${amount} exceeds EMI amount ₹${emiAmount}`,
-      };
-    }
-
-    if (amount > remainingBalance) {
-      return {
-        message: `Payment ₹${amount} exceeds remaining balance ₹${remainingBalance}`,
+        message: `Amount ₹${amount} exceeds allowed amount ₹${maxPayable}`,
       };
     }
 
     const result = await this.payEmiInternal(loan.id, amount);
+
     if (amount === remainingBalance) {
       link.isUsed = true;
       await this.paymentLinkRepo.save(link);
     }
+
     return result;
   }
   // ─── PRIVATE HELPERS ──────────────────────────────────────────

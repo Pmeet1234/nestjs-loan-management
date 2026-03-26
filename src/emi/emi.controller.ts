@@ -42,8 +42,8 @@ export class EmiController {
 
   // Generate payment link
   @Post('generate-link')
-  generateLink(@Body() body: { loanId: number; emiNumber: number }) {
-    return this.emiService.generatePaymentLink(body.loanId, body.emiNumber);
+  generateLink(@Body() body: { loanId: number }) {
+    return this.emiService.generatePaymentLink(body.loanId);
   }
 
   // Public EMI details

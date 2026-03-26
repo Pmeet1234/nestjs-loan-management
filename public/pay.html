@@ -9,7 +9,7 @@
       background: #fff;
       padding: 20px;
       border-radius: 10px;
-      max-width: 400px;
+      max-width: 420px;
       margin: auto;
     }
     button {
@@ -39,7 +39,7 @@
 <script>
   const token = new URLSearchParams(window.location.search).get('token');
 
-  let emiAmount = 0;
+  let maxPayable = 0;
   let remaining = 0;
 
   async function load() {
@@ -47,7 +47,7 @@
     const result = await res.json();
     const data = result.data || result;
 
-    emiAmount = data.emiAmount;
+    maxPayable = data.maxPayable;
     remaining = data.remainingBalance;
 
     document.getElementById('details').innerHTML = `
@@ -62,7 +62,13 @@
       <b>Penalty:</b> ₹${data.penaltyAmount} <br>
       <b>Total Paid:</b> ₹${data.totalPaid} <br>
       <b>Remaining Balance:</b> ₹${data.remainingBalance} <br>
-      <b>Remaining EMIs:</b> ${data.remainingEmis}
+      <b>Remaining EMIs:</b> ${data.remainingEmis} <br><br>
+
+      <b>Due Date:</b> ${data.dueDate} <br>
+      <b>Loan End Date:</b> ${data.loanEndDate} <br>
+      <b>Days Left:</b> ${data.daysLeft} days <br>
+
+      ${data.isDelayed ? '<span style="color:red;">⚠️ Payment is delayed</span><br>' : ''}
     `;
 
     if (remaining === 0) {
@@ -72,8 +78,8 @@
     }
 
     document.getElementById('paymentSection').innerHTML = `
-      <label>Enter Amount (Max ₹${emiAmount}):</label>
-      <input id="amount" type="number" value="${emiAmount}" />
+      <label>Enter Amount (Max ₹${maxPayable}):</label>
+      <input id="amount" type="number" value="${maxPayable}" max="${maxPayable}" />
 
       <button onclick="pay()">Pay EMI</button>
     `;
@@ -88,9 +94,9 @@
       return;
     }
 
-    if (amount > emiAmount) {
+    if (amount > maxPayable) {
       document.getElementById('msg').innerHTML =
-        `<span class="error">Amount exceeds EMI amount ₹${emiAmount}</span>`;
+        `<span class="error">Amount exceeds allowed ₹${maxPayable}</span>`;
       return;
     }
 
