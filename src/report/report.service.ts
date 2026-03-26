@@ -35,7 +35,6 @@ export class ReportService {
       .createQueryBuilder('loan')
       .leftJoinAndSelect('loan.user', 'user') // JOIN user table + load user data into loan object
       .leftJoinAndSelect('loan.emiPayments', 'emi'); // JOIN emi table + load emi data into loan object
-
     // search filter → only add WHERE if search param exists
     if (search) {
       console.log('🔍 Search filter applied:', search);
@@ -89,9 +88,6 @@ export class ReportService {
     qb.orderBy('loan.id', 'ASC').addOrderBy('emi.emiNumber', 'ASC');
     console.log('🔑 Params:', qb.getParameters());
 
-    if (showAll !== 'true') {
-      qb.skip(page - 1 * limit).take(limit);
-    }
     // declare variables outside try/catch so accessible after
     let loans: Loan[] = [];
     let totalCounts: number = 0;
@@ -100,7 +96,7 @@ export class ReportService {
       // Promise.all → runs both queries at SAME TIME (parallel = faster)
       // await → pauses function here, releases thread to handle other requests
       // Event Loop → handles other requests while DB queries run
-      [loans, totalCounts] = await qb.getManyAndCount();
+      [loans, totalCounts] = await Promise.all([qb.getMany(), qb.getCount()]);
 
       console.log('📦 Total loans fetched:', loans.length);
       console.log('📦 Loans count:', totalCounts);
@@ -175,26 +171,26 @@ export class ReportService {
     console.log('🗺️  UserMap values:', [...userMap.values()]);
 
     const allUsers = [...userMap.values()]; // converts the Map values into a plain array
-    // const totalRecords = allUsers.length; // total unique users count
-    const totalPages = Math.ceil(totalCounts / limit); // Math.ceil → round up (7/2 = 3.5 → 4)
+    const totalRecords = allUsers.length; // total unique users count
+    const totalPages = Math.ceil(totalRecords / limit); // Math.ceil → round up (7/2 = 3.5 → 4)
 
     // showAll=true → return all users, skip pagination
     // showAll=false → slice array to return only current page
-    const paginatedUsers = allUsers;
-    // showAll === 'true'
-    //   ? allUsers
-    //   : allUsers.slice((page - 1) * limit, page * limit);
+    const paginatedUsers =
+      showAll === 'true'
+        ? allUsers
+        : allUsers.slice((page - 1) * limit, page * limit);
     // slice formula: page=2, limit=5 → slice(5, 10) → users 6-10
 
     // pagination meta → sent to frontend for UI pagination buttons
     const pagination =
       showAll === 'true'
         ? {
-            totalRecords: totalCounts,
+            totalRecords,
             showAll: true,
           }
         : {
-            totalRecords: totalCounts,
+            totalRecords,
             totalPages,
             currentPage: page,
             limit,

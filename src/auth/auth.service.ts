@@ -15,7 +15,7 @@ import { User } from '../user/entities/user.entity';
 
 @Injectable()
 export class AuthService {
-  private readonly OTP_EXPIRY_MINUTES = 5;
+  private readonly OTP_EXPIRY_MINUTES = 0;
   private readonly JWT_EXPIRY = '1h';
 
   constructor(
@@ -69,7 +69,6 @@ export class AuthService {
         }),
       );
     }
-
     return {
       message: 'OTP sent successfully to your registered mobile number.',
       data: { mobile_no, otp, expiresAt: otpExpiry },
