@@ -43,7 +43,7 @@
   let remaining = 0;
 
   async function load() {
-    const res = await fetch(`/emi/public/details?token=${token}`);
+    const res = await fetch(`/payment/details?token=${token}`);
     const result = await res.json();
     const data = result.data || result;
 
@@ -100,7 +100,7 @@
       return;
     }
 
-    const res = await fetch(`/emi/pay-public`, {
+    const res = await fetch(`/payment/pay`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token, amount })

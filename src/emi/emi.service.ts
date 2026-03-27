@@ -14,8 +14,8 @@ import { EmiPayment } from '../emi/entities/emi-payment.entity';
 import { Loan } from '../loan/entities/loan.entity';
 import { PayEmiDto } from 'src/auth/dto/pay_emi.dto';
 import { EmiHistoryQueryDto } from './dto/emi-history-query.dto';
-import { randomBytes } from 'crypto';
-import { PaymentLink } from './entities/payment-link.entity';
+// import { randomBytes } from 'crypto';
+import { PaymentLink } from '../payment/entites/payment-link.entity';
 
 @Injectable()
 export class EmiService {
@@ -26,98 +26,104 @@ export class EmiService {
     private paymentLinkRepo: Repository<PaymentLink>,
   ) {}
 
-  // ─── PAY EMI ──────────────────────────────────────────────────
   async payEmi(dto: PayEmiDto) {
     const loan = await this.findLoanOrFail(dto.loanId);
 
-    if (loan.status === 'completed')
-      throw new ConflictException({ message: 'Loan already completed.' });
+    if (loan.status === 'completed') {
+      throw new ConflictException('Loan already completed.');
+    }
 
-    if (loan.status === 'defaulted')
-      throw new ForbiddenException({
-        message: 'Loan defaulted. Not eligible.',
-      });
-
-    const loanCreatedAt = new Date(loan.createdAt);
-
-    if (dto.isLoanDefaulted(loanCreatedAt, loan.emiCount)) {
-      await this.markLoanDefaulted(loan);
-      throw new ConflictException({ message: 'Loan duration ended.' });
+    if (loan.status === 'defaulted') {
+      throw new ForbiddenException('Loan defaulted.');
     }
 
     const paidEmis = await this.emiRepo.find({
       where: { loanId: dto.loanId },
+      order: { emiNumber: 'ASC' },
     });
-
-    const paidCount = this.countPaidEmis(paidEmis);
-
-    if (paidCount >= loan.emiCount)
-      throw new ConflictException({
-        message: 'All EMIs already paid.',
-      });
 
     const totalPayable = Number(loan.totalPayable);
 
-    const totalAmountPaidSoFar = paidEmis.reduce(
+    const totalPaidSoFar = paidEmis.reduce(
       (sum, e) => sum + Number(e.totalPaid),
       0,
     );
 
     const remainingBalance = Math.max(
-      parseFloat((totalPayable - totalAmountPaidSoFar).toFixed(2)),
+      parseFloat((totalPayable - totalPaidSoFar).toFixed(2)),
       0,
     );
 
-    const emiAmount = Number(loan.emiAmount);
-
-    // 🔥 CORE FIX
-    const maxPayable = Math.min(emiAmount, remainingBalance);
+    if (remainingBalance <= 0) {
+      throw new ConflictException('Loan already fully paid');
+    }
 
     if (dto.amount <= 0) {
-      throw new BadRequestException({
-        message: 'Enter valid amount',
-      });
+      throw new BadRequestException('Enter valid amount');
     }
 
-    if (dto.amount > maxPayable) {
-      throw new BadRequestException({
-        message: `Amount ₹${dto.amount} exceeds allowed amount ₹${maxPayable}`,
-      });
+    if (dto.amount > remainingBalance) {
+      throw new BadRequestException(
+        `Amount ₹${dto.amount} exceeds remaining ₹${remainingBalance}`,
+      );
     }
 
-    const emiNumber = paidCount + 1;
+    let amountToPay = dto.amount;
+    const emiAmount = Number(loan.emiAmount);
+    const loanCreatedAt = new Date(loan.createdAt);
 
-    const dueDate = dto.getEmiDueDate(loanCreatedAt, emiNumber);
+    let emiNumber = 1;
 
-    const isDelayed = dto.isDelayed(dueDate);
+    const payments: { emiNumber: number; paid: number }[] = [];
 
-    const penaltyAmount = isDelayed ? dto.calculatePenalty(emiAmount) : 0;
+    while (amountToPay > 0 && emiNumber <= loan.emiCount) {
+      // ✅ Correct calculation (only emiAmount, not totalPaid)
+      const alreadyPaid = paidEmis
+        .filter((e) => e.emiNumber === emiNumber)
+        .reduce((sum, e) => sum + Number(e.emiAmount), 0);
 
-    const totalPaid = dto.amount + penaltyAmount;
+      const remainingForEmi = emiAmount - alreadyPaid;
 
-    const emiStatus = isDelayed ? 'delayed' : 'paid';
+      if (remainingForEmi <= 0) {
+        emiNumber++;
+        continue;
+      }
 
-    const newTotalAmountPaid = totalAmountPaidSoFar + totalPaid;
+      const payNow = Math.min(amountToPay, remainingForEmi);
 
-    await this.emiRepo.save(
-      this.emiRepo.create({
-        loanId: dto.loanId,
-        userId: loan.user.id,
+      const dueDate = dto.getEmiDueDate(loanCreatedAt, emiNumber);
+      const isDelayed = dto.isDelayed(dueDate);
+
+      const penalty = isDelayed ? dto.calculatePenalty(emiAmount) : 0;
+
+      await this.emiRepo.save(
+        this.emiRepo.create({
+          loanId: dto.loanId,
+          userId: loan.user.id,
+          emiNumber,
+          emiAmount: payNow,
+          penaltyAmount: penalty,
+          totalPaid: payNow + penalty,
+          dueDate,
+          paidDate: new Date(),
+          status: isDelayed ? 'delayed' : 'paid',
+        }),
+      );
+
+      payments.push({
         emiNumber,
-        emiAmount: dto.amount,
-        penaltyAmount,
-        totalPaid,
-        dueDate,
-        paidDate: new Date(),
-        status: emiStatus,
-      }),
-    );
+        paid: payNow,
+      });
 
-    loan.amountPaid = newTotalAmountPaid;
+      amountToPay -= payNow;
+      emiNumber++;
+    }
 
-    const isLoanCompleted = newTotalAmountPaid >= totalPayable;
+    const newTotalPaid = totalPaidSoFar + dto.amount;
 
-    if (isLoanCompleted) {
+    loan.amountPaid = newTotalPaid;
+
+    if (newTotalPaid >= totalPayable) {
       loan.status = 'completed';
       loan.user.hasAppliedLoan = false;
       await this.loanRepo.manager.save(loan.user);
@@ -125,29 +131,21 @@ export class EmiService {
 
     await this.loanRepo.save(loan);
 
-    const newRemainingBalance = Math.max(
-      parseFloat((totalPayable - newTotalAmountPaid).toFixed(2)),
+    const newRemaining = Math.max(
+      parseFloat((totalPayable - newTotalPaid).toFixed(2)),
       0,
     );
 
     return {
-      message: isLoanCompleted
-        ? '🎉 Loan completed successfully'
-        : `EMI ${emiNumber} paid successfully`,
+      message: 'Payment successful',
       data: {
-        loanId: dto.loanId,
-        emiNumber,
-        emiAmount: `₹${dto.amount}`,
-        penaltyAmount: `₹${penaltyAmount}`,
-        totalPaid: `₹${totalPaid}`,
-        remainingBalance: `₹${newRemainingBalance}`,
-        status: emiStatus,
-        remainingEmis: isLoanCompleted ? 0 : loan.emiCount - emiNumber,
-        loanStatus: isLoanCompleted ? 'completed' : 'active',
+        totalPaidNow: `₹${dto.amount}`,
+        remainingBalance: `₹${newRemaining}`,
+        emiBreakdown: payments,
+        loanStatus: newRemaining === 0 ? 'completed' : 'active',
       },
     };
   }
-
   // ─── GET EMI STATUS ───────────────────────────────────────────
   async getEmiStatus(loanId: number) {
     const loan = await this.findLoanOrFail(loanId);
@@ -195,9 +193,11 @@ export class EmiService {
         totalPayable: `₹${loan.totalPayable}`,
         totalAmountPaid: `₹${totalAmountPaid}`,
         remainingBalance: `₹${Math.max(remainingBalance, 0)}`,
+
         nextDueDate: remainingEmis > 0 ? this.formatDate(nextDueDate) : null,
-        loanEndDate: this.formatDate(loanEndDate),
-        daysLeft,
+        loanEndDate: loanEndDate ? this.formatDate(loanEndDate) : null,
+        daysLeft: daysLeft ?? 0,
+
         loanTimeMessage:
           daysLeft <= 0
             ? 'Loan duration completed.'
@@ -302,101 +302,6 @@ export class EmiService {
     return responseData;
   }
 
-  async generatePaymentLink(loanId: number) {
-    const loan = await this.findLoanOrFail(loanId);
-
-    const paidEmis = await this.emiRepo.find({
-      where: { loanId },
-    });
-
-    const paidCount = this.countPaidEmis(paidEmis);
-    const emiNumber = paidCount + 1;
-
-    if (emiNumber > loan.emiCount) {
-      return {
-        message: 'All EMIs already paid',
-      };
-    }
-
-    const token = randomBytes(16).toString('hex');
-
-    await this.paymentLinkRepo.save({
-      loanId,
-      emiNumber,
-      token,
-      isUsed: false,
-    });
-
-    return {
-      // message: `Payment link generated for EMI ${emiNumber}`,
-      emiNumber,
-      url: `http://localhost:3000/pay.html?token=${token}`,
-    };
-  }
-
-  async getEmiDetailsByToken(token: string) {
-    const link = await this.paymentLinkRepo.findOne({ where: { token } });
-    if (!link) throw new NotFoundException('Invalid link');
-
-    const loan = await this.findLoanOrFail(link.loanId);
-
-    const paidEmis = await this.emiRepo.find({
-      where: { loanId: link.loanId },
-    });
-
-    const paidCount = this.countPaidEmis(paidEmis);
-
-    const totalPaid = paidEmis.reduce((sum, e) => sum + Number(e.totalPaid), 0);
-
-    const rawRemaining = Number(loan.totalPayable) - totalPaid;
-
-    const remainingBalance = Math.max(parseFloat(rawRemaining.toFixed(2)), 0);
-
-    const lastEmi = paidEmis[paidEmis.length - 1];
-
-    const penaltyAmount = lastEmi ? Number(lastEmi.penaltyAmount) : 0;
-
-    const loanCreatedAt = new Date(loan.createdAt);
-
-    const dueDate = new Date(loanCreatedAt);
-    dueDate.setMonth(dueDate.getMonth() + link.emiNumber);
-
-    const loanEndDate = new Date(loanCreatedAt);
-    loanEndDate.setMonth(loanEndDate.getMonth() + loan.emiCount);
-
-    const today = new Date();
-    const isDelayed = today > dueDate;
-    const daysLeft = Math.max(
-      Math.ceil((dueDate.getTime() - today.getTime()) / 86400000),
-      0,
-    );
-
-    const emiAmount = Number(loan.emiAmount);
-    const maxPayable = Math.min(emiAmount, remainingBalance);
-
-    return {
-      loanId: loan.id,
-      emiNumber: link.emiNumber,
-
-      loanAmount: Number(loan.approvedAmount),
-      interestAmount: Number(loan.interestAmount),
-      totalPayable: Number(loan.totalPayable),
-
-      emiAmount,
-      maxPayable,
-      totalPaid,
-      remainingBalance,
-
-      penaltyAmount,
-      remainingEmis: Math.max(loan.emiCount - paidCount, 0),
-
-      dueDate: this.formatDate(dueDate),
-      loanEndDate: this.formatDate(loanEndDate),
-      isDelayed,
-      daysLeft,
-    };
-  }
-
   async payEmiInternal(loanId: number, amount: number) {
     const dto = new PayEmiDto();
     dto.loanId = loanId;
@@ -405,50 +310,6 @@ export class EmiService {
     return this.payEmi(dto);
   }
 
-  async payEmiByToken(token: string, amount: number) {
-    const link = await this.paymentLinkRepo.findOne({ where: { token } });
-
-    if (!link) throw new NotFoundException('Invalid link');
-
-    if (link.isUsed) {
-      return { message: 'Link already used ❌' };
-    }
-
-    const loan = await this.findLoanOrFail(link.loanId);
-
-    const paidEmis = await this.emiRepo.find({
-      where: { loanId: loan.id },
-    });
-
-    const totalPaid = paidEmis.reduce((sum, e) => sum + Number(e.totalPaid), 0);
-
-    const rawRemaining = Number(loan.totalPayable) - totalPaid;
-
-    const remainingBalance = Math.max(parseFloat(rawRemaining.toFixed(2)), 0);
-
-    const emiAmount = Number(loan.emiAmount);
-
-    const maxPayable = Math.min(emiAmount, remainingBalance);
-
-    if (amount <= 0) {
-      return { message: 'Enter valid amount' };
-    }
-
-    if (amount > maxPayable) {
-      return {
-        message: `Amount ₹${amount} exceeds allowed amount ₹${maxPayable}`,
-      };
-    }
-
-    const result = await this.payEmiInternal(loan.id, amount);
-
-    if (amount === remainingBalance) {
-      link.isUsed = true;
-      await this.paymentLinkRepo.save(link);
-    }
-
-    return result;
-  }
   // ─── PRIVATE HELPERS ──────────────────────────────────────────
   private formatDate(date: Date | string | null | undefined): string {
     if (!date) return '';

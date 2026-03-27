@@ -39,22 +39,4 @@ export class EmiController {
   ) {
     return this.emiService.getEmiHistory(query, res);
   }
-
-  // Generate payment link
-  @Post('generate-link')
-  generateLink(@Body() body: { loanId: number }) {
-    return this.emiService.generatePaymentLink(body.loanId);
-  }
-
-  // Public EMI details
-  @Get('public/details')
-  getDetails(@Query('token') token: string) {
-    return this.emiService.getEmiDetailsByToken(token);
-  }
-
-  // Public Pay
-  @Post('pay-public')
-  payPublic(@Body() body: { token: string; amount: number }) {
-    return this.emiService.payEmiByToken(body.token, body.amount);
-  }
 }
