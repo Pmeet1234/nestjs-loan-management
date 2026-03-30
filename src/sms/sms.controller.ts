@@ -7,7 +7,7 @@ export class SmsController {
 
   @Get('test-sms')
   async testSms() {
-    await this.smsService.sendSms('9558895075', 'Test SMS 🚀');
+    await this.smsService.sendWhatsapp('9558895075', 'Test SMS 🚀');
     return 'SMS sent';
   }
 }

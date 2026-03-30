@@ -1,3 +1,6 @@
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import twilio from 'twilio';
@@ -5,30 +8,27 @@ import twilio from 'twilio';
 @Injectable()
 export class SmsService {
   private client;
-
-  constructor(private configService: ConfigService) {
+  constructor(private ConfigService: ConfigService) {
     this.client = twilio(
-      this.configService.get<string>('TWILIO_ACCOUNT_SID'),
-      this.configService.get<string>('TWILIO_AUTH_TOKEN'),
+      this.ConfigService.get<string>('TWILIO_ACCOUNT_SID'),
+      this.ConfigService.get<string>('TWILIO_AUTH_TOKEN'),
     );
   }
-
-  async sendSms(to: string, message: string): Promise<void> {
+  async sendWhatsapp(to: string, message: string) {
     try {
-      // Ensure correct number format
       const fullNumber = to.startsWith('+91') ? to : `+91${to}`;
 
       const response = await this.client.messages.create({
         body: message,
-        from: this.configService.get<string>('TWILIO_PHONE_NUMBER'),
-        to: fullNumber,
+        from: this.ConfigService.get<string>('TWILIO_WHATSAPP_NUMBER'), //from: this.ConfigService.get<string>('TWILIO_PHONE_NUMBER'),
+        to: `whatsapp:${fullNumber}`,
       });
-
-      console.log('✅ SMS SENT');
-      console.log('To:', fullNumber);
+      console.log('message sent to whatsApp');
+      console.log('to:', fullNumber);
       console.log('SID:', response.sid);
-    } catch (error) {
-      console.error('❌ SMS FAILED');
+    } catch (err) {
+      const error = err as Error;
+      console.log('Failed to send WhatsApp message');
       console.error(error.message);
     }
   }

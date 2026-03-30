@@ -33,22 +33,26 @@ export class PaymentService {
 
   // ─── PRIVATE HELPERS ──────────────────────────────────────────
 
+  // EMI due date = loan start + emiNumber months
   private getEmiDueDate(loan: Loan, emiNumber: number): Date {
     const due = new Date(loan.createdAt);
     due.setMonth(due.getMonth() + emiNumber);
     return due;
   }
 
+  // 10% penalty if payment is past due date, else 0
   private calcPenalty(loan: Loan, dueDate: Date): number {
     const isDelayed = new Date() > dueDate;
     return isDelayed ? Math.round(Number(loan.emiAmount) * 0.1) : 0;
   }
 
+  // Count distinct EMI numbers already paid
   private async getPaidEmiCount(loanId: number): Promise<number> {
     const paidEmis = await this.emiRepo.find({ where: { loanId } });
     return new Set(paidEmis.map((e) => e.emiNumber)).size;
   }
 
+  // Sum of all EMI payments made so far
   private async getTotalPaid(loanId: number): Promise<number> {
     const emis = await this.emiRepo.find({ where: { loanId } });
     return emis.reduce((sum, e) => sum + Number(e.totalPaid), 0);
@@ -67,7 +71,7 @@ export class PaymentService {
       throw new ConflictException('All EMIs already paid. Loan completed.');
     }
 
-    // Expire all unused links for this loan
+    // Invalidate any existing unused links before creating a new one
     await this.paymentLinkRepo
       .createQueryBuilder()
       .update(PaymentLink)
@@ -107,6 +111,8 @@ export class PaymentService {
 
     const totalPaid = await this.getTotalPaid(loan.id);
     const paidCount = await this.getPaidEmiCount(loan.id);
+
+    // What's still left to pay on the entire loan
     const remainingBalance = Math.max(
       parseFloat((totalPayable - totalPaid).toFixed(2)),
       0,
@@ -115,6 +121,7 @@ export class PaymentService {
     const loanEndDate = new Date(loan.createdAt);
     loanEndDate.setMonth(loanEndDate.getMonth() + loan.emiCount);
 
+    // Days until this EMI is due (0 if already past)
     const daysLeft = Math.max(
       Math.ceil((dueDate.getTime() - Date.now()) / 86_400_000),
       0,
@@ -129,7 +136,7 @@ export class PaymentService {
       interestAmount: Number(loan.interestAmount),
       totalPayable,
       emiAmount,
-      emiDueAmount: emiAmount + penalty,
+      emiDueAmount: emiAmount + penalty, // base + penalty
 
       totalPaid,
       remainingBalance,
@@ -150,6 +157,7 @@ export class PaymentService {
     const link = await this.paymentLinkRepo.findOne({ where: { token } });
     if (!link) throw new NotFoundException('Invalid or expired link');
 
+    // Each link is single-use
     if (link.isUsed) {
       throw new ConflictException(
         'This payment link has already been used. Please generate a new link for the next EMI.',
@@ -158,6 +166,7 @@ export class PaymentService {
 
     if (amount <= 0) throw new BadRequestException('Enter valid amount');
 
+    // Load user relation to access mobile number for SMS
     const loan = await this.loanRepo.findOne({
       where: { id: link.loanId },
       relations: ['user'],
@@ -169,6 +178,7 @@ export class PaymentService {
     const exactDue = Number(loan.emiAmount) + penalty;
     const penaltyNote = penalty > 0 ? ` (includes ₹${penalty} penalty)` : '';
 
+    // Enforce exact amount — no partial or excess payments
     if (amount < exactDue) {
       throw new BadRequestException(
         `Amount ₹${amount} is less than required ₹${exactDue} for EMI ${link.emiNumber}${penaltyNote}.`,
@@ -181,6 +191,7 @@ export class PaymentService {
       );
     }
 
+    // Guard against overpaying the total loan balance
     const totalPaid = await this.getTotalPaid(loan.id);
     const remainingBalance = Math.max(
       parseFloat((Number(loan.totalPayable) - totalPaid).toFixed(2)),
@@ -195,19 +206,21 @@ export class PaymentService {
 
     const result = await this.emiService.payEmiInternal(loan.id, amount);
 
-    //link is used, so that it cannot be reused. New link will be generated for next EMI
+    // Mark link as used so it can't be reused
     link.isUsed = true;
     await this.paymentLinkRepo.save(link);
 
-    // send Sms to phone number about successful payment
+    // Notify user via SMS — failure won't affect the payment result
     try {
-      await this.smsService.sendSms(
-        '9558895075',
+      await this.smsService.sendWhatsapp(
+        '9558895075', //loan.user.mobile,
         `Dear ${loan.user.username}, your EMI ${link.emiNumber} of ₹${amount} has been paid successfully.`,
       );
     } catch (err) {
-      console.error('SMS failed but payment successful');
+      const error = err as Error;
+      console.error('SMS failed but payment successful', error.message);
     }
+
     return result;
   }
 }
