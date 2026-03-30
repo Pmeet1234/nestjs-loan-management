@@ -1,6 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
-
 import {
   Injectable,
   NotFoundException,
@@ -15,6 +12,8 @@ import { EmiPayment } from '../emi/entities/emi-payment.entity';
 import { Loan } from '../loan/entities/loan.entity';
 import { EmiService } from '../emi/emi.service';
 import { PaymentLink } from './entites/payment-link.entity';
+import { formatDate } from 'src/common/utils/date.util';
+import { SmsService } from 'src/sms/sms.service';
 
 @Injectable()
 export class PaymentService {
@@ -28,167 +27,187 @@ export class PaymentService {
     @InjectRepository(Loan)
     private loanRepo: Repository<Loan>,
 
-    private emiService: EmiService, // 🔥 reuse EMI logic
+    private emiService: EmiService,
+    private smsService: SmsService,
   ) {}
 
-  async generatePaymentLink(loanId: number) {
-    const loan = await this.loanRepo.findOne({
-      where: { id: loanId },
-    });
+  // ─── PRIVATE HELPERS ──────────────────────────────────────────
 
+  private getEmiDueDate(loan: Loan, emiNumber: number): Date {
+    const due = new Date(loan.createdAt);
+    due.setMonth(due.getMonth() + emiNumber);
+    return due;
+  }
+
+  private calcPenalty(loan: Loan, dueDate: Date): number {
+    const isDelayed = new Date() > dueDate;
+    return isDelayed ? Math.round(Number(loan.emiAmount) * 0.1) : 0;
+  }
+
+  private async getPaidEmiCount(loanId: number): Promise<number> {
+    const paidEmis = await this.emiRepo.find({ where: { loanId } });
+    return new Set(paidEmis.map((e) => e.emiNumber)).size;
+  }
+
+  private async getTotalPaid(loanId: number): Promise<number> {
+    const emis = await this.emiRepo.find({ where: { loanId } });
+    return emis.reduce((sum, e) => sum + Number(e.totalPaid), 0);
+  }
+
+  // ─── GENERATE PAYMENT LINK ────────────────────────────────────
+
+  async generatePaymentLink(loanId: number) {
+    const loan = await this.loanRepo.findOne({ where: { id: loanId } });
     if (!loan) throw new NotFoundException('Loan not found');
 
-    const paidEmis = await this.emiRepo.find({
-      where: { loanId },
-    });
+    const paidCount = await this.getPaidEmiCount(loanId);
+    const nextEmiNumber = paidCount + 1;
 
-    const paidCount = paidEmis.length;
-    const emiNumber = paidCount + 1;
-
-    if (emiNumber > loan.emiCount) {
-      throw new ConflictException('All EMIs already paid');
+    if (nextEmiNumber > loan.emiCount) {
+      throw new ConflictException('All EMIs already paid. Loan completed.');
     }
 
-    const token = randomBytes(16).toString('hex');
+    // Expire all unused links for this loan
+    await this.paymentLinkRepo
+      .createQueryBuilder()
+      .update(PaymentLink)
+      .set({ isUsed: true })
+      .where('loanId = :loanId AND isUsed = false', { loanId })
+      .execute();
 
+    const token = randomBytes(16).toString('hex');
     await this.paymentLinkRepo.save({
       loanId,
-      emiNumber,
+      emiNumber: nextEmiNumber,
       token,
       isUsed: false,
     });
 
     return {
-      emiNumber,
+      emiNumber: nextEmiNumber,
+      totalEmis: loan.emiCount,
+      remainingEmis: loan.emiCount - paidCount,
       url: `http://localhost:3000/pay.html?token=${token}`,
     };
   }
 
+  // ─── GET EMI DETAILS BY TOKEN ─────────────────────────────────
+
   async getEmiDetailsByToken(token: string) {
     const link = await this.paymentLinkRepo.findOne({ where: { token } });
-
     if (!link) throw new NotFoundException('Invalid or expired link');
 
-    const loan = await this.loanRepo.findOne({
-      where: { id: link.loanId },
-    });
-
+    const loan = await this.loanRepo.findOne({ where: { id: link.loanId } });
     if (!loan) throw new NotFoundException('Loan not found');
 
-    const paidEmis = await this.emiRepo.find({
-      where: { loanId: loan.id },
-    });
-
-    const totalPaid = paidEmis.reduce((sum, e) => sum + Number(e.totalPaid), 0);
-
+    const dueDate = this.getEmiDueDate(loan, link.emiNumber);
+    const penalty = this.calcPenalty(loan, dueDate);
+    const emiAmount = Number(loan.emiAmount);
     const totalPayable = Number(loan.totalPayable);
 
+    const totalPaid = await this.getTotalPaid(loan.id);
+    const paidCount = await this.getPaidEmiCount(loan.id);
     const remainingBalance = Math.max(
       parseFloat((totalPayable - totalPaid).toFixed(2)),
       0,
     );
 
-    const loanCreatedAt = new Date(loan.createdAt);
-
-    const dueDate = new Date(loanCreatedAt);
-    dueDate.setMonth(dueDate.getMonth() + link.emiNumber);
-
-    const loanEndDate = new Date(loanCreatedAt);
+    const loanEndDate = new Date(loan.createdAt);
     loanEndDate.setMonth(loanEndDate.getMonth() + loan.emiCount);
 
-    const today = new Date();
-
-    const isDelayed = today > dueDate;
-
-    const penaltyAmount = isDelayed
-      ? Math.round(Number(loan.emiAmount) * 0.1)
-      : 0;
-
     const daysLeft = Math.max(
-      Math.ceil((dueDate.getTime() - today.getTime()) / 86400000),
+      Math.ceil((dueDate.getTime() - Date.now()) / 86_400_000),
       0,
     );
 
     return {
       loanId: loan.id,
       emiNumber: link.emiNumber,
+      isUsed: link.isUsed,
 
       loanAmount: Number(loan.approvedAmount),
       interestAmount: Number(loan.interestAmount),
       totalPayable,
-
-      emiAmount: Number(loan.emiAmount),
-      maxPayable: remainingBalance, // ✅ FIXED
+      emiAmount,
+      emiDueAmount: emiAmount + penalty,
 
       totalPaid,
       remainingBalance,
+      remainingEmis: Math.max(loan.emiCount - paidCount, 0),
 
-      penaltyAmount: penaltyAmount || 0,
-      remainingEmis: Math.max(loan.emiCount - paidEmis.length, 0),
-
-      dueDate: dueDate ? this.formatDate(dueDate) : null,
-      loanEndDate: loanEndDate ? this.formatDate(loanEndDate) : null,
+      penaltyAmount: penalty,
+      isDelayed: new Date() > dueDate,
       daysLeft,
-      isDelayed,
+
+      dueDate: formatDate(dueDate),
+      loanEndDate: formatDate(loanEndDate),
     };
   }
 
+  // ─── PAY EMI BY TOKEN ─────────────────────────────────────────
+
   async payEmiByToken(token: string, amount: number) {
     const link = await this.paymentLinkRepo.findOne({ where: { token } });
-
     if (!link) throw new NotFoundException('Invalid or expired link');
 
     if (link.isUsed) {
-      return { message: 'Payment link already used' };
+      throw new ConflictException(
+        'This payment link has already been used. Please generate a new link for the next EMI.',
+      );
     }
 
-    if (amount <= 0) {
-      throw new BadRequestException('Enter valid amount');
-    }
+    if (amount <= 0) throw new BadRequestException('Enter valid amount');
 
     const loan = await this.loanRepo.findOne({
       where: { id: link.loanId },
+      relations: ['user'],
     });
-
     if (!loan) throw new NotFoundException('Loan not found');
 
-    const paidEmis = await this.emiRepo.find({
-      where: { loanId: loan.id },
-    });
+    const dueDate = this.getEmiDueDate(loan, link.emiNumber);
+    const penalty = this.calcPenalty(loan, dueDate);
+    const exactDue = Number(loan.emiAmount) + penalty;
+    const penaltyNote = penalty > 0 ? ` (includes ₹${penalty} penalty)` : '';
 
-    const totalPaid = paidEmis.reduce((sum, e) => sum + Number(e.totalPaid), 0);
+    if (amount < exactDue) {
+      throw new BadRequestException(
+        `Amount ₹${amount} is less than required ₹${exactDue} for EMI ${link.emiNumber}${penaltyNote}.`,
+      );
+    }
 
-    const totalPayable = Number(loan.totalPayable);
+    if (amount > exactDue) {
+      throw new BadRequestException(
+        `Amount ₹${amount} exceeds required ₹${exactDue} for EMI ${link.emiNumber}. Please pay the exact amount.`,
+      );
+    }
 
+    const totalPaid = await this.getTotalPaid(loan.id);
     const remainingBalance = Math.max(
-      parseFloat((totalPayable - totalPaid).toFixed(2)),
+      parseFloat((Number(loan.totalPayable) - totalPaid).toFixed(2)),
       0,
     );
 
-    // ✅ FIX: allow bulk payment
     if (amount > remainingBalance) {
       throw new BadRequestException(
-        `Amount ₹${amount} exceeds remaining ₹${remainingBalance}`,
+        `Amount ₹${amount} exceeds remaining loan balance ₹${remainingBalance}.`,
       );
     }
 
     const result = await this.emiService.payEmiInternal(loan.id, amount);
 
-    if (amount === remainingBalance) {
-      link.isUsed = true;
-      await this.paymentLinkRepo.save(link);
-    }
+    //link is used, so that it cannot be reused. New link will be generated for next EMI
+    link.isUsed = true;
+    await this.paymentLinkRepo.save(link);
 
+    // send Sms to phone number about successful payment
+    try {
+      await this.smsService.sendSms(
+        '9558895075',
+        `Dear ${loan.user.username}, your EMI ${link.emiNumber} of ₹${amount} has been paid successfully.`,
+      );
+    } catch (err) {
+      console.error('SMS failed but payment successful');
+    }
     return result;
-  }
-  private formatDate(date: Date | string | null | undefined): string {
-    if (!date) return '';
-    return new Date(date)
-      .toLocaleDateString('en-GB', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-      })
-      .replace(/ /g, '-'); // e.g. 04-Mar-2024
   }
 }

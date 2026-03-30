@@ -14,8 +14,8 @@ import { EmiPayment } from '../emi/entities/emi-payment.entity';
 import { Loan } from '../loan/entities/loan.entity';
 import { PayEmiDto } from 'src/auth/dto/pay_emi.dto';
 import { EmiHistoryQueryDto } from './dto/emi-history-query.dto';
-// import { randomBytes } from 'crypto';
 import { PaymentLink } from '../payment/entites/payment-link.entity';
+import { formatDate } from 'src/common/utils/date.util';
 
 @Injectable()
 export class EmiService {
@@ -194,8 +194,8 @@ export class EmiService {
         totalAmountPaid: `₹${totalAmountPaid}`,
         remainingBalance: `₹${Math.max(remainingBalance, 0)}`,
 
-        nextDueDate: remainingEmis > 0 ? this.formatDate(nextDueDate) : null,
-        loanEndDate: loanEndDate ? this.formatDate(loanEndDate) : null,
+        nextDueDate: remainingEmis > 0 ? formatDate(nextDueDate) : null,
+        loanEndDate: loanEndDate ? formatDate(loanEndDate) : null,
         daysLeft: daysLeft ?? 0,
 
         loanTimeMessage:
@@ -278,8 +278,8 @@ export class EmiService {
       emiAmount: `₹${e.emiAmount}`,
       penaltyAmount: `₹${e.penaltyAmount}`,
       totalPaid: `₹${e.totalPaid}`,
-      dueDate: this.formatDate(e.dueDate),
-      paidDate: this.formatDate(e.paidDate),
+      dueDate: formatDate(e.dueDate),
+      paidDate: formatDate(e.paidDate),
       status: e.status,
     }));
 
@@ -308,18 +308,6 @@ export class EmiService {
     dto.amount = amount;
 
     return this.payEmi(dto);
-  }
-
-  // ─── PRIVATE HELPERS ──────────────────────────────────────────
-  private formatDate(date: Date | string | null | undefined): string {
-    if (!date) return '';
-    return new Date(date)
-      .toLocaleDateString('en-GB', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-      })
-      .replace(/ /g, '-'); // e.g. 04-Mar-2024
   }
 
   private async findLoanOrFail(loanId: number) {

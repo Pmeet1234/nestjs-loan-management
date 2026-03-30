@@ -1,121 +1,236 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
-<head>
-  <title>EMI Payment</title>
+  <head>
+    <title>EMI Payment</title>
 
-  <style>
-    body { font-family: Arial; background: #f2f2f2; padding: 20px; }
-    .card {
-      background: #fff;
-      padding: 20px;
-      border-radius: 10px;
-      max-width: 420px;
-      margin: auto;
-    }
-    button {
-      width: 100%;
-      padding: 12px;
-      background: green;
-      color: white;
-      border: none;
-      margin-top: 15px;
-    }
-    input { width: 100%; padding: 8px; margin-top: 10px; }
-    .error { color: red; }
-    .success { color: green; }
-  </style>
-</head>
+    <style>
+      body {
+        font-family: Arial;
+        background: #f2f2f2;
+        padding: 20px;
+      }
+      .card {
+        background: #fff;
+        padding: 20px;
+        border-radius: 10px;
+        max-width: 420px;
+        margin: auto;
+      }
+      button {
+        width: 100%;
+        padding: 12px;
+        background: green;
+        color: white;
+        border: none;
+        margin-top: 15px;
+        cursor: pointer;
+        font-size: 16px;
+        border-radius: 6px;
+      }
+      button:disabled {
+        background: #aaa;
+        cursor: not-allowed;
+      }
+      input {
+        width: 100%;
+        padding: 8px;
+        margin-top: 10px;
+        box-sizing: border-box;
+      }
+      .error {
+        color: red;
+        margin-top: 8px;
+      }
+      .success {
+        color: green;
+        margin-top: 8px;
+      }
+      .completed-box {
+        text-align: center;
+        padding: 20px;
+        color: green;
+        font-size: 18px;
+        font-weight: bold;
+      }
+      .amount-hint {
+        font-size: 13px;
+        color: #555;
+        margin-top: 6px;
+      }
+    </style>
+  </head>
 
-<body>
+  <body>
+    <div class="card">
+      <h2>EMI Payment</h2>
+      <div id="details"></div>
+      <div id="paymentSection"></div>
+      <p id="msg" style="min-height: 20px; margin-top: 10px"></p>
+    </div>
 
-<div class="card">
-  <h2>EMI Payment</h2>
+    <script>
+      const token = new URLSearchParams(window.location.search).get('token');
+      let exactEmiDue = 0;
 
-  <div id="details"></div>
-  <div id="paymentSection"></div>
-  <p id="msg"></p>
-</div>
+      // ─── HELPERS ──────────────────────────────────────────────
 
-<script>
-  const token = new URLSearchParams(window.location.search).get('token');
+      function getErrorMessage(result) {
+        return (
+          result.message?.message || result.message || 'Something went wrong'
+        );
+      }
 
-  let maxPayable = 0;
-  let remaining = 0;
+      function setHtml(id, html) {
+        document.getElementById(id).innerHTML = html;
+      }
 
-  async function load() {
-    const res = await fetch(`/payment/details?token=${token}`);
-    const result = await res.json();
-    const data = result.data || result;
+      function setMsg(html) {
+        setHtml('msg', html);
+      }
 
-    maxPayable = data.maxPayable;
-    remaining = data.remainingBalance;
+      function showError(msg) {
+        setMsg(`<span class="error">❌ ${msg}</span>`);
+      }
 
-    document.getElementById('details').innerHTML = `
-      <b>Loan ID:</b> ${data.loanId} <br>
-      <b>EMI Number:</b> ${data.emiNumber} <br><br>
+      function showSuccess(msg) {
+        setMsg(`<span class="success">✅ ${msg}</span>`);
+      }
 
-      <b>Loan Amount:</b> ₹${data.loanAmount} <br>
-      <b>Interest:</b> ₹${data.interestAmount} <br>
-      <b>Total Payable:</b> ₹${data.totalPayable} <br><br>
+      function getPayBtn() {
+        return document.querySelector('button');
+      }
 
-      <b>EMI Amount:</b> ₹${data.emiAmount} <br>
-      <b>Penalty:</b> ₹${data.penaltyAmount} <br>
-      <b>Total Paid:</b> ₹${data.totalPaid} <br>
-      <b>Remaining Balance:</b> ₹${data.remainingBalance} <br>
-      <b>Remaining EMIs:</b> ${data.remainingEmis} <br><br>
+      // ─── RENDER HELPERS ───────────────────────────────────────
 
-      <b>Due Date:</b> ${data.dueDate} <br>
-      <b>Loan End Date:</b> ${data.loanEndDate} <br>
-      <b>Days Left:</b> ${data.daysLeft} days <br>
+      function renderDetails(data) {
+        const penaltyColor = data.penaltyAmount > 0 ? 'orange' : 'inherit';
+        const dueColor = data.penaltyAmount > 0 ? 'red' : 'inherit';
 
-      ${data.isDelayed ? '<span style="color:red;">⚠️ Payment is delayed</span><br>' : ''}
-    `;
+        setHtml(
+          'details',
+          `
+          <b>Loan ID:</b> ${data.loanId} <br>
+          <b>EMI Number:</b> ${data.emiNumber} <br><br>
 
-    if (remaining === 0) {
-      document.getElementById('paymentSection').innerHTML =
-        `<p class="success">🎉 Loan Completed</p>`;
-      return;
-    }
+          <b>Loan Amount:</b> ₹${data.loanAmount} <br>
+          <b>Interest:</b> ₹${data.interestAmount} <br>
+          <b>Total Payable:</b> ₹${data.loanAmount} + ₹${data.interestAmount} =
+            <span style="font-weight:bold;">₹${data.totalPayable}</span> <br><br>
 
-    document.getElementById('paymentSection').innerHTML = `
-      <label>Enter Amount (Max ₹${maxPayable}):</label>
-      <input id="amount" type="number" value="${maxPayable}" max="${maxPayable}" />
+          <b>EMI Amount:</b> ₹${data.emiAmount} <br>
+          <b>Penalty (10%):</b> <span style="color:${penaltyColor};">₹${data.penaltyAmount}</span> <br>
+          <b>Total Due This EMI:</b> ₹${data.emiAmount} + ₹${data.penaltyAmount} =
+            <span style="color:${dueColor}; font-weight:bold;">₹${exactEmiDue}</span> <br><br>
 
-      <button onclick="pay()">Pay EMI</button>
-    `;
-  }
+          <b>Total Paid So Far:</b> ₹${data.totalPaid} <br>
+          <b>Remaining Balance:</b> ₹${data.remainingBalance} <br>
+          <b>Remaining EMIs:</b> ${data.remainingEmis} <br><br>
 
-  async function pay() {
-    const amount = Number(document.getElementById('amount').value);
+          <b>Due Date:</b> ${data.dueDate} <br>
+          <b>Loan End Date:</b> ${data.loanEndDate} <br>
+          <b>Days Left:</b> ${data.daysLeft} days <br>
 
-    if (!amount || amount <= 0) {
-      document.getElementById('msg').innerHTML =
-        '<span class="error">Enter valid amount</span>';
-      return;
-    }
+          ${data.isDelayed ? '<span style="color:red;">⚠️ Payment is delayed — penalty applied</span><br>' : ''}
+        `,
+        );
+      }
 
-    if (amount > maxPayable) {
-      document.getElementById('msg').innerHTML =
-        `<span class="error">Amount exceeds allowed ₹${maxPayable}</span>`;
-      return;
-    }
+      function renderPaymentSection(data) {
+        const totalEmiCount = data.emiNumber + data.remainingEmis - 1;
+        const penaltyNote =
+          data.penaltyAmount > 0
+            ? ` — includes <span style="color:orange;">₹${data.penaltyAmount} penalty</span>`
+            : '';
 
-    const res = await fetch(`/payment/pay`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token, amount })
-    });
+        setHtml(
+          'paymentSection',
+          `
+          <label><b>Amount to Pay for EMI ${data.emiNumber}:</b></label>
+          <input
+            id="amount"
+            type="number"
+            value="${exactEmiDue}"
+            readonly
+            style="background:#f9f9f9; cursor:not-allowed;"
+          />
+          <p class="amount-hint">
+            EMI ${data.emiNumber} of ${totalEmiCount}${penaltyNote}
+          </p>
+          <button onclick="pay()">Pay ₹${exactEmiDue} for EMI ${data.emiNumber}</button>
+        `,
+        );
+      }
 
-    const result = await res.json();
+      // ─── MAIN LOGIC ───────────────────────────────────────────
 
-    document.getElementById('msg').innerHTML =
-      `<span class="success">${result.message}</span>`;
+      async function load() {
+        setMsg('');
 
-    load();
-  }
+        const res = await fetch(`/payment/details?token=${token}`);
+        const result = await res.json();
 
-  load();
-</script>
+        if (!res.ok) {
+          setHtml(
+            'details',
+            `<p class="error">❌ ${getErrorMessage(result)}</p>`,
+          );
+          return;
+        }
 
-</body>
+        const data = result.data || result;
+        exactEmiDue = Number(data.emiDueAmount);
+
+        renderDetails(data);
+
+        if (data.remainingBalance === 0 && data.remainingEmis === 0) {
+          setHtml(
+            'paymentSection',
+            `<div class="completed-box">🎉 All EMIs Completed! Loan Fully Paid.</div>`,
+          );
+          return;
+        }
+
+        if (data.remainingEmis === 0) {
+          setHtml(
+            'paymentSection',
+            `<div class="completed-box">✅ This EMI is already paid.</div>`,
+          );
+          return;
+        }
+
+        renderPaymentSection(data);
+      }
+
+      async function pay() {
+        if (!exactEmiDue || exactEmiDue <= 0) {
+          showError('Invalid amount.');
+          return;
+        }
+
+        const btn = getPayBtn();
+        btn.disabled = true;
+        btn.textContent = 'Processing...';
+
+        const res = await fetch(`/payment/pay`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token, amount: exactEmiDue }),
+        });
+
+        const result = await res.json();
+
+        if (!res.ok) {
+          showError(getErrorMessage(result));
+          btn.disabled = false;
+          btn.textContent = `Pay ₹${exactEmiDue}`;
+          return;
+        }
+
+        showSuccess(result.message || 'Payment successful');
+        setTimeout(load, 1500);
+      }
+
+      load();
+    </script>
+  </body>
 </html>
