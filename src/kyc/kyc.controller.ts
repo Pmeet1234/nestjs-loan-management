@@ -1,4 +1,12 @@
-import { Controller, Post, Body, UseGuards, Request } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  UseGuards,
+  Request,
+  Query,
+  Get,
+} from '@nestjs/common';
 
 import { KycService } from './kyc.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -19,5 +27,10 @@ export class KycController {
       body.adharcard_no,
       body.pancard_no,
     );
+  }
+
+  @Get('getKycDetails')
+  getKyc(@Query('mobile_no') mobile_no: string) {
+    return this.kycService.getKycDetails(mobile_no);
   }
 }

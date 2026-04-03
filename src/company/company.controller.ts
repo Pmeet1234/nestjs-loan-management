@@ -1,4 +1,12 @@
-import { Controller, Post, Body, UseGuards, Request } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  UseGuards,
+  Request,
+  Get,
+  Query,
+} from '@nestjs/common';
 
 import { CompanyService } from './company.service';
 import { AddCompanyDto } from '../auth/dto/company.dto';
@@ -19,5 +27,10 @@ export class CompanyController {
       body.company_name,
       body.salary,
     );
+  }
+
+  @Get('companyDetail')
+  getCompanyDetails(@Query('mobile_no') mobile_no: string) {
+    return this.companyService.getCompanyDetails(mobile_no);
   }
 }

@@ -20,15 +20,16 @@ export class SmsService {
 
       const response = await this.client.messages.create({
         body: message,
-        from: this.ConfigService.get<string>('TWILIO_WHATSAPP_NUMBER'), //from: this.ConfigService.get<string>('TWILIO_PHONE_NUMBER'),
-        to: `whatsapp:${fullNumber}`,
+        from: this.ConfigService.get<string>('TWILIO_PHONE_NUMBER'), //from: this.ConfigService.get<string>('TWILIO_PHONE_NUMBER'),
+        to: fullNumber,
+        // to: `whatsapp:${fullNumber}`,
       });
-      console.log('message sent to whatsApp');
+      console.log('message sent to mobile number');
       console.log('to:', fullNumber);
       console.log('SID:', response.sid);
     } catch (err) {
       const error = err as Error;
-      console.log('Failed to send WhatsApp message');
+      console.log('Failed to send  message');
       console.error(error.message);
     }
   }

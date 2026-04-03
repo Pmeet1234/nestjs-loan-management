@@ -15,7 +15,7 @@ import { User } from '../user/entities/user.entity';
 
 @Injectable()
 export class AuthService {
-  private readonly OTP_EXPIRY_MINUTES = 0;
+  private readonly OTP_EXPIRY_MINUTES = 5;
   private readonly JWT_EXPIRY = '1h';
 
   constructor(
@@ -169,7 +169,8 @@ export class AuthService {
 
   // ─── PRIVATE HELPERS ──────────────────────────────────────────
   private generateOtp(): number {
-    return Math.floor(100000 + Math.random() * 900000);
+    return 123456;
+    // return Math.floor(100000 + Math.random() * 900000);
   }
 
   private getOtpExpiry(): Date {

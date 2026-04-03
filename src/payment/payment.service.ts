@@ -80,12 +80,14 @@ export class PaymentService {
       .execute();
 
     const token = randomBytes(16).toString('hex');
-    await this.paymentLinkRepo.save({
-      loanId,
-      emiNumber: nextEmiNumber,
-      token,
-      isUsed: false,
-    });
+    await this.paymentLinkRepo.save(
+      this.paymentLinkRepo.create({
+        loanId,
+        emiNumber: nextEmiNumber,
+        token,
+        isUsed: false,
+      }),
+    );
 
     return {
       emiNumber: nextEmiNumber,

@@ -1,1 +1,18 @@
-# VSCode Black Border Task Progress\n\n## Completed Steps:\n- [x] Step 1: Edit VSCode settings.json to set all relevant borders to #000000\n- [x] Step 2: Reload VSCode window (Ctrl+R)\n- [x] Step 3: Verify changes - all borders now black (#000000)\n\n**Note:** If you still see blue borders after reloading (Ctrl+R), it may be due to:\n1. Workspace settings overriding (check .vscode/settings.json in project).\n2. Extension like Peacock. Disable extensions temporarily (Extensions view > ... > Disable All Installed) and reload.\n3. Windows theme/DPI scaling - try Developer: Reload Window.\nReply with screenshot or which border is blue for further tweaks.\n\nTask completed!
+# Payment Link Frontend Access Fix
+
+Status: In Progress
+
+## Steps:
+
+- [ ] Step 1: Update src/main.ts to serve static files with '/static/' prefix
+- [ ] Step 2: Update src/payment/payment.service.ts generated URL to use /static/pay.html
+- [ ] Step 3: Restart app (npm run start:dev)
+- [ ] Step 4: Generate new payment link
+- [ ] Step 5: Open the new URL in browser - should load without 404
+- [ ] Step 6: Verify /payment/details fetches EMI data, payment button works
+
+## Current Error
+404 on /pay.html?token=... (static + query conflict)
+
+## Expected Result
+/static/pay.html?token=... serves HTML + JS fetches API successfully

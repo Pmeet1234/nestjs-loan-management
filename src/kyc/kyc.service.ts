@@ -76,6 +76,35 @@ export class KycService {
       });
   }
 
+  async getKycDetails(mobile_no: string) {
+    const user = await this.userRepo.find({
+      where: mobile_no ? { mobile_no } : {},
+      relations: ['kyc'],
+      order: { id: 'ASC' },
+    });
+    console.log(user);
+    if (!user) throw new NotFoundException({ message: 'User not found' });
+
+    const kycs = user.filter((user) => user.kyc !== null);
+    console.log(kycs);
+    if (!kycs.length)
+      throw new NotFoundException({ message: 'No KYC details found' });
+
+    return {
+      message: 'KYC details fetched successfully.',
+      data: {
+        kycs: kycs.map((user) => ({
+          userId: user.id,
+          username: user.username,
+          mobile_no: user.mobile_no,
+          kyc: {
+            adharcard_no: user.kyc.adharcard_no,
+            pancard_no: user.kyc.pancard_no,
+          },
+        })),
+      },
+    };
+  }
 
   private maskAadhar(adharcard_no: string): string {
     return 'XXXX-XXXX-' + adharcard_no.slice(-4);

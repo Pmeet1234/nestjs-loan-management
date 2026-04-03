@@ -40,4 +40,28 @@ export class CompanyService {
       },
     };
   }
+
+  async getCompanyDetails(mobile_no: string) {
+    const user = await this.userRepo.find({
+      where: { mobile_no },
+      relations: ['company'],
+    });
+
+    if (!user) throw new NotFoundException({ message: 'User not found' });
+
+    return {
+      message: 'Company details fetched successfully.',
+      data: {
+        users: user.map((user) => ({
+          userId: user.id,
+          username: user.username,
+          mobile_no: user.mobile_no,
+          company: {
+            company_name: user.company.company_name,
+            salary: `₹${user.company.salary}`,
+          },
+        })),
+      },
+    };
+  }
 }
