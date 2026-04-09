@@ -5,6 +5,7 @@ import { AdminService } from './admin.service';
 import { AdminController } from './admin.controller';
 import { User } from '../user/entities/user.entity';
 import { JwtModule } from '@nestjs/jwt';
+import { SmsModule } from 'src/sms/sms.module';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { JwtModule } from '@nestjs/jwt';
       secret: 'mySecretKey',
       signOptions: { expiresIn: '1d' },
     }),
+    SmsModule,
   ],
   providers: [AdminService],
   controllers: [AdminController],

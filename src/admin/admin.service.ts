@@ -12,6 +12,7 @@ import { Repository } from 'typeorm';
 import md5 from 'md5';
 import { Admin } from './entities/admin.entity';
 import { User } from '../user/entities/user.entity';
+import { SmsService } from 'src/sms/sms.service';
 
 @Injectable()
 export class AdminService {
@@ -23,6 +24,7 @@ export class AdminService {
     private userRepository: Repository<User>,
 
     private jwtService: JwtService,
+    private smsService: SmsService,
   ) {}
 
   private hashPassword(password: string): string {
@@ -103,6 +105,15 @@ export class AdminService {
 
     await this.userRepository.save(user);
 
+    try {
+      const smsNumber = '9558895075';
+      await this.smsService.sendWhatsapp(
+        smsNumber,
+        `Employment approved for mobile number ${mobile_no}.`,
+      );
+    } catch (err) {
+      console.error('SMS failed', (err as Error).message);
+    }
     return {
       message: 'Employment approved successfully.',
       data: {

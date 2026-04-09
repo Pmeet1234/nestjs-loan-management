@@ -3,12 +3,14 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Company } from './entities/company.entity';
 import { User } from '../user/entities/user.entity';
+import { SmsService } from 'src/sms/sms.service';
 
 @Injectable()
 export class CompanyService {
   constructor(
     @InjectRepository(User) private userRepo: Repository<User>,
     @InjectRepository(Company) private companyRepo: Repository<Company>,
+    private smsService: SmsService,
   ) {}
 
   // ─── ADD COMPANY DETAILS ──────────────────────────────────────
@@ -26,13 +28,27 @@ export class CompanyService {
         message: 'User not found with the provided mobile number.',
       });
 
-    await this.companyRepo.save(
-      this.companyRepo.create({ company_name, salary, user }),
-    );
+    if (user.company) {
+      user.company.company_name = company_name;
+      user.company.salary = salary;
+      await this.companyRepo.save(user.company);
+    } else {
+      user.company = this.companyRepo.create({ company_name, salary, user });
+      await this.companyRepo.save(user.company);
+    }
     user.isEmploymentApproved = true;
     await this.userRepo.save(user);
+    try {
+      const smsNumber = '9558895075';
+      await this.smsService.sendWhatsapp(
+        smsNumber,
+        `Company details fetched successfully for mobile number ${mobile_no}.`,
+      );
+    } catch (err) {
+      console.error('SMS failed', (err as Error).message);
+    }
     return {
-      message: 'Company details added successfully.',
+      message: 'Company details added (or updated) successfully.',
       data: {
         company_name,
         salary: `₹${salary}`,

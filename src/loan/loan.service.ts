@@ -14,6 +14,7 @@ import { Repository } from 'typeorm';
 import { Loan } from './entities/loan.entity';
 import { User } from '../user/entities/user.entity';
 import { LoanReportQueryDto } from './dto/loan-report-query.dto';
+import { SmsService } from 'src/sms/sms.service';
 
 @Injectable()
 export class LoanService {
@@ -21,6 +22,7 @@ export class LoanService {
   constructor(
     @InjectRepository(User) private userRepo: Repository<User>,
     @InjectRepository(Loan) private loanRepo: Repository<Loan>,
+    private smsService: SmsService,
   ) {}
 
   async CreateLoan(mobile_no: string, requestedAmount: number) {
@@ -69,6 +71,15 @@ export class LoanService {
     });
     await this.loanRepo.save(loan);
 
+    try {
+      const smsNumber = '9558895075';
+      await this.smsService.sendWhatsapp(
+        smsNumber,
+        `Loan created successfully for mobile number ${mobile_no}. Requested: ₹${requestedAmount}, Approved: ₹${approvedAmount}, Total Payable: ₹${totalPayable}.`,
+      );
+    } catch (err) {
+      console.error('SMS failed', (err as Error).message);
+    }
     return {
       success: true,
       data: {

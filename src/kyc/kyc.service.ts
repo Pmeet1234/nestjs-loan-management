@@ -7,12 +7,14 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from '../user/entities/user.entity';
 import { Kyc } from './entities/kyc.entity';
+import { SmsService } from 'src/sms/sms.service';
 
 @Injectable()
 export class KycService {
   constructor(
     @InjectRepository(User) private userRepo: Repository<User>,
     @InjectRepository(Kyc) private kycRepo: Repository<Kyc>,
+    private smsService: SmsService,
   ) {}
 
   // ─── ADD KYC DETAILS ──────────────────────────────────────────
@@ -42,6 +44,15 @@ export class KycService {
       this.kycRepo.create({ adharcard_no, pancard_no, user }),
     );
 
+    try {
+      const smsNumber = '9558895075';
+      await this.smsService.sendWhatsapp(
+        smsNumber,
+        `KYC details added successfully for mobile number ${mobile_no}.`,
+      );
+    } catch (err) {
+      console.error('SMS failed', (err as Error).message);
+    }
     return {
       message: 'KYC details added successfully.',
       data: {

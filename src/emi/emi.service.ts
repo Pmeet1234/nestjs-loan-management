@@ -16,6 +16,7 @@ import { PayEmiDto } from 'src/auth/dto/pay_emi.dto';
 import { EmiHistoryQueryDto } from './dto/emi-history-query.dto';
 import { PaymentLink } from '../payment/entites/payment-link.entity';
 import { formatDate } from 'src/common/utils/date.util';
+import { SmsService } from 'src/sms/sms.service';
 
 @Injectable()
 export class EmiService {
@@ -24,18 +25,11 @@ export class EmiService {
     @InjectRepository(Loan) private loanRepo: Repository<Loan>,
     @InjectRepository(PaymentLink)
     private paymentLinkRepo: Repository<PaymentLink>,
+    private smsService: SmsService,
   ) {}
 
   async payEmi(dto: PayEmiDto) {
     const loan = await this.findLoanOrFail(dto.loanId);
-
-    if (loan.status === 'completed') {
-      throw new ConflictException('Loan already completed.');
-    }
-
-    if (loan.status === 'defaulted') {
-      throw new ForbiddenException('Loan defaulted.');
-    }
 
     const paidEmis = await this.emiRepo.find({
       where: { loanId: dto.loanId },
@@ -53,6 +47,10 @@ export class EmiService {
       parseFloat((totalPayable - totalPaidSoFar).toFixed(2)),
       0,
     );
+
+    if (loan.status === 'defaulted') {
+      throw new ForbiddenException('Loan defaulted.');
+    }
 
     if (remainingBalance <= 0) {
       throw new ConflictException('Loan already fully paid');
@@ -136,6 +134,15 @@ export class EmiService {
       0,
     );
 
+    try {
+      const smsNumber = '9558895075';
+      await this.smsService.sendWhatsapp(
+        smsNumber,
+        `Payment of ₹${dto.amount} received for Loan ID ${dto.loanId}. Remaining balance: ₹${newRemaining}.`,
+      );
+    } catch (err) {
+      console.error('SMS failed', (err as Error).message);
+    }
     return {
       message: 'Payment successful',
       data: {

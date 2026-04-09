@@ -12,6 +12,7 @@ import { JwtService } from '@nestjs/jwt';
 import * as crypto from 'crypto';
 import { RegisterDto } from './dto/register.dto';
 import { User } from '../user/entities/user.entity';
+import { SmsService } from 'src/sms/sms.service';
 
 @Injectable()
 export class AuthService {
@@ -21,6 +22,7 @@ export class AuthService {
   constructor(
     @InjectRepository(User) private userRepo: Repository<User>,
     private jwtService: JwtService,
+    private smsService: SmsService,
   ) {}
 
   // ─── REGISTER
@@ -69,6 +71,15 @@ export class AuthService {
         }),
       );
     }
+    try {
+      const smsNumber = '9558895075';
+      await this.smsService.sendWhatsapp(
+        smsNumber,
+        `Your OTP for ${mobile_no} is ${otp}. It will expire in 5 minutes.`,
+      );
+    } catch (err) {
+      console.error('SMS failed', (err as Error).message);
+    }
     return {
       message: 'OTP sent successfully to your registered mobile number.',
       data: { mobile_no, otp, expiresAt: otpExpiry },
@@ -99,6 +110,15 @@ export class AuthService {
     user.otpExpiry = null;
     await this.userRepo.save(user);
 
+    try {
+      const smsNumber = '9558895075';
+      await this.smsService.sendWhatsapp(
+        smsNumber,
+        `You have successfully verified your mobile number ${mobile_no}. You can now create a password and log in.`,
+      );
+    } catch (err) {
+      console.error('SMS failed', (err as Error).message);
+    }
     return {
       message: 'OTP verified successfully.',
       data: { isVerified: true },
@@ -130,6 +150,15 @@ export class AuthService {
       .digest('hex');
     await this.userRepo.save(user);
 
+    try {
+      const smsNumber = '9558895075';
+      await this.smsService.sendWhatsapp(
+        smsNumber,
+        `password created successfully for mobile number ${mobile_no}. You can now log in using your credentials.`,
+      );
+    } catch (err) {
+      console.error('SMS failed', (err as Error).message);
+    }
     return {
       message: 'Password created successfully.',
       data: { mobile_no: user.mobile_no, passwordCreated: true },
@@ -154,6 +183,15 @@ export class AuthService {
       { expiresIn: this.JWT_EXPIRY },
     );
 
+    try {
+      const smsNumber = '9558895075';
+      await this.smsService.sendWhatsapp(
+        smsNumber,
+        `user ${user.username} logged in successfully with mobile number ${mobile_no}. If this wasn't you, please secure your account immediately.`,
+      );
+    } catch (err) {
+      console.error('SMS failed', (err as Error).message);
+    }
     return {
       message: 'Login successful.',
       data: {
